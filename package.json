@@ -1,0 +1,141 @@
+{
+	"name": "skos-ttl-editor",
+	"publisher": "markstoehr",
+	"displayName": "SKOS Turtle Editor",
+	"description": "",
+	"version": "0.0.1",
+	"engines": {
+		"vscode": "^1.40.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"languages": [{
+		"id": "turtle",
+		"extensions": [".ttl"]
+	}],
+	"activationEvents": [
+		"onLanguage:turtle",
+		"onCommand:extension.startMarkdown"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "extension.addConcept",
+				"title": "Add Concept"
+			},
+			{
+				"command": "extension.appendToScheme",
+				"title": "Append Concept to Scheme"
+			},
+			{
+				"command": "extension.appendSubtreeToScheme",
+				"title": "Append Subtree to Scheme"
+			},
+			{
+				"command": "extension.complementFiles",
+				"title": "Complement with all files in workspace",
+				"icon": {
+				  "light": "resources/light/refresh.svg",
+				  "dark": "resources/dark/refresh.svg"
+				}
+			}
+		],
+		"menus": {
+			"view/item/context": [
+				{
+					"command": "extension.addConcept",
+					"when": "view == skosOutline"
+				},
+				{
+					"command": "extension.appendToScheme",
+					"when": "view == skosOutline"
+				},
+				{
+					"command": "extension.appendSubtreeToScheme",
+					"when": "view == skosOutline"
+				}
+			],
+			"view/title": [
+				{
+					"command": "extension.complementFiles",
+					"when": "view == skosOutline",
+					"group": "navigation"
+				}
+			]
+		},		
+		"configuration":{
+			"title": "Markdown Configuration",
+			"properties": {
+				"extension.customAutoCompletePredicates": {
+					"type": "object",
+					"default": {
+						"prov:": ["wasDerivedFrom"],
+						"rdf:": ["hasPart","partOf"],
+						"dc:": ["description"],
+						"dwh:": ["restriction"],
+						":": ["unit","status","displayLabel"]
+					},
+					"description": "Defines custom autocomplete predicates."
+				},
+				"extension.customAutoCompleteObjects": {
+					"type": "object",
+					"default": {
+						"dwh:": ["integerRestriction","stringRestriction","largeStringRestriction","floatRestriction","partialDateRestriction","dateRestriction"]
+					},
+					"description": "Defines custom autocomplete objects."
+				},
+				"extension.customIcons": {
+					"type": "object",
+					"default": [
+						{
+							"rule": "dwh:restriction dwh:integerRestriction",
+							"icon": "number"
+						},
+						{
+							"rule": "dwh:restriction dwh:floatRestriction",
+							"icon": "number"
+						}
+					],
+					"description": "Defines rules for custom treeview icons."
+				}
+			}
+		},
+		"views": {
+            "skos-explorer": [
+                {
+                    "id": "skosOutline",
+                    "name": "Skos Outline"
+				}
+            ]
+		},
+		"viewsContainers": {
+			"activitybar": [
+			  {
+				"id": "skos-explorer",
+				"title": "Skos Explorer",
+				"icon": "media/skos2.svg"
+			  }
+			]
+		}
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"pretest": "npm run compile",
+		"test": "node ./out/test/runTest.js"
+	},
+	"devDependencies": {
+		"@types/glob": "^7.1.1",
+		"@types/mocha": "^5.2.7",
+		"@types/node": "^12.11.7",
+		"@types/vscode": "^1.40.0",
+		"glob": "^7.1.5",
+		"mocha": "^6.2.2",
+		"typescript": "^3.6.4",
+		"tslint": "^5.20.0",
+		"vscode-test": "^1.2.2"
+	}
+}
