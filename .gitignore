@@ -3,3 +3,4 @@ out/
 .vscode
 .vscodeignore
 vsc-extension-quickstart.md
+skos-ttl-editor-*.vsix

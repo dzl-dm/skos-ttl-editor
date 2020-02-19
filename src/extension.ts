@@ -183,7 +183,7 @@ export function activate(context: vscode.ExtensionContext) {
 				vscode.workspace.getConfiguration().get("extension.customAutoCompletePredicates"),
 				vscode.workspace.getConfiguration().get("extension.customAutoCompleteObjects")
 			), 
-			':')
+			':',' ')
 		);
 	context.subscriptions.push(
 		vscode.languages.registerHoverProvider(
@@ -280,9 +280,19 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		this.customAutoCompleteObjects = customAutoCompleteObjects;
 	}
     public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext):vscode.CompletionItem[] {
-		let range = document.getWordRangeAtPosition(position,new RegExp(parser.iri));
-		if (!range){ return []; }
-		let triggerWord = document.getText(range);
+		let objectrange = document.getWordRangeAtPosition(position,new RegExp("skos:(broader|narrower|member|topConceptOf|hasTopConcept)\\s+"));
+		if (objectrange) {
+			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
+				let ci = new vscode.CompletionItem(ss.label,vscode.CompletionItemKind.Property);
+				ci.insertText = ss.concept;
+				ci.documentation = ss.description;
+				return ci;
+			});
+		}
+		
+		let irirange = document.getWordRangeAtPosition(position,new RegExp(parser.iri));
+		if (!irirange){ return []; }
+		let triggerWord = document.getText(irirange);
 		let result:vscode.CompletionItem[] = [];
 		if (triggerWord === ""){
 			return result;
