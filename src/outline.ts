@@ -34,6 +34,7 @@ import {
         this.tree = rootNodes.filter(n => n.getType()==="skos:ConceptScheme").sort(treeSortByLabel);
         this.tree = this.tree.concat(rootNodes.filter(n => n.getType()==="skos:Collection").sort(treeSortByLabel));
         this.tree = this.tree.concat(rootNodes.filter(n => n.getType()==="skos:Concept").sort(treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => !["skos:ConceptScheme","skos:Collection","skos:Concept"].includes(n.getType())).sort(treeSortByLabel));
         this.refresh();
     }
     getChildren(element?: SkosNode): SkosNode[] | Thenable<SkosNode[]> {

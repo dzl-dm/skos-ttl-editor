@@ -9,16 +9,17 @@ export class SkosParser {
             return {};
         }
         let text = document.getText();
-        let raute = new RegExp("(?:("+directive+")|("+Sstring+")|\\#[^\\n]*)","g");
-        let resttext = text.replace(raute, "$1$2");
+        let raute = new RegExp("(?:("+IRIREF+"|"+Sstring+")|\\#[^\\n]*)","g");
+        let resttext = text.replace(raute, "$1");
     
+        /* Causes stack overflow for large documents.
         let turtledoc_match = new RegExp(turtleDoc);
         let match = turtledoc_match.exec(resttext);
         if (!(match && match[0] === resttext)){
             let notmatching = match && resttext.substr(match[0].length) || "";
-            //console.log("Not matching: " + notmatching);
+            console.log("Not matching: " + notmatching);
             return undefined;
-        }
+        }*/
     
         let statements = this.getStatements(resttext);
         return this.appendSSS(document,statements);
