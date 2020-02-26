@@ -27,23 +27,28 @@ export class SkosParser {
     
     private getStatements(s:string):StatementMatch[]{
         let result:StatementMatch[]=[];
-        let lineStart = 1;
-        let lineEnd = 0;
-        let lastMatchIndex = 0, linesbetween = 0;
-        let match;
+        let lineStartPos = 1;
+        let lineEndPos = 0;
+        let lastMatchIndex = 0;
+        let match, tempmatch;
         let triples_match = new RegExp(triples,"g");
         
-        while (match = triples_match.exec(s)){
-            linesbetween = s.substring(lastMatchIndex+1,match.index).split(/\r\n|\r|\n/).length-2;
-            lineStart = lineStart + linesbetween + 1;
-            lineEnd = lineStart + match[0].split(/\r\n|\r|\n/).length-2;
-            lastMatchIndex = match.index;
-            let toChar = match[0].length - Math.max(match[0].lastIndexOf("\r"),match[0].lastIndexOf("\n"));
+        while (tempmatch = triples_match.exec(s)){
+            match = tempmatch[0].replace(/[\r\n\s]*$/,"");
+            let linesbetween = s.substring(lastMatchIndex,tempmatch.index).split(/\r\n|\r|\n/);
+            let linesbetweenCount = linesbetween.length-2;
+            lineStartPos = lineStartPos + linesbetweenCount + 1;
+            let matchLines = match.split(/\r\n|\r|\n/);
+            lineEndPos = lineStartPos + matchLines.length-2;
+            lastMatchIndex = tempmatch.index;
+            let fromChar = linesbetween[linesbetween.length-1].length;
+            let toChar = match.length - Math.max(match.lastIndexOf("\r"),match.lastIndexOf("\n"),0);
     
             result.push({
-                match:match[0],
-                fromLine:lineStart,
-                toLine:lineEnd,
+                match:match,
+                fromLine:lineStartPos-1,
+                toLine:lineEndPos,
+                fromChar:fromChar,
                 toChar:toChar
             });
         }
@@ -76,7 +81,7 @@ export class SkosParser {
                     location: new vscode.Location(
                         document.uri,
                         new vscode.Range(
-                            new vscode.Position(sm.fromLine,0),
+                            new vscode.Position(sm.fromLine,sm.fromChar),
                             new vscode.Position(sm.toLine,sm.toChar)
                         )
                     ),
@@ -113,8 +118,8 @@ export class SkosParser {
                             sss[s].notations.push(literal);
                         }
                         else if ((p === "a" || p === "rdf:type")){
-                            if (o as "skos:Concept"|"skos:ConceptScheme"){
-                                sss[s].type = <"skos:Concept"|"skos:ConceptScheme">o;
+                            if (["skos:Concept","skos:ConceptScheme","skos:Collection"].includes(o)){
+                                sss[s].type = <"skos:Concept"|"skos:ConceptScheme"|"skos:Collection">o;
                             }
                         }
                         match_object.groups = {};
@@ -129,7 +134,8 @@ export class SkosParser {
 interface StatementMatch {
 	match:string;
 	fromLine:number;
-	toLine:number;
+    toLine:number;
+    fromChar:number;
 	toChar:number;
 }
 

@@ -90,7 +90,7 @@ export class SubjectHandler {
             item.description.appendMarkdown(pathMarkdown);
     
             item.occurances.forEach((occ,index)=>{
-                item.description.appendMarkdown("\n---\n"+occ.location.uri.fsPath.substr(occ.location.uri.fsPath.lastIndexOf("\\")+1) + ": Lines " + occ.location.range.start.line + " - " + occ.location.range.end.line);
+                item.description.appendMarkdown("\n---\n"+occ.location.uri.fsPath.substr(occ.location.uri.fsPath.lastIndexOf("\\")+1) + ": Lines " + (occ.location.range.start.line+1) + " - " + (occ.location.range.end.line+1));
                 item.description.appendCodeblock(occ.statement);
             });
         });

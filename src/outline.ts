@@ -23,7 +23,12 @@ import {
     }
     setTree(rootNodes:SkosNode[]){
         let treeSortByLabel = (a:SkosNode,b:SkosNode)=>{
-          if (a.getLabel()<b.getLabel()) {
+          let suborderedStartCharacters = ["_","<",":"];
+          if (!suborderedStartCharacters.includes(a.getLabel()[0]) && suborderedStartCharacters.includes(b.getLabel()[0])){
+            return -1;
+          } else if (suborderedStartCharacters.includes(a.getLabel()[0]) && !suborderedStartCharacters.includes(b.getLabel()[0])){
+            return 1;
+          } else if (a.getLabel()<b.getLabel()) {
             return -1;
           } else if (a.getLabel()>b.getLabel()){
             return 1;
@@ -54,7 +59,7 @@ import {
         treeItem.command = {
           arguments: [ element ],
           title: "Selection",
-          command: "extension.selectConcept"
+          command: "skos-ttl-editor.selectConcept"
         };
         return treeItem;
     }

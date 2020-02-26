@@ -3,7 +3,7 @@
 	"publisher": "markstoehr",
 	"displayName": "SKOS Turtle Editor",
 	"description": "",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"engines": {
 		"vscode": "^1.40.0"
 	},
@@ -20,26 +20,34 @@
 	}],
 	"activationEvents": [
 		"onLanguage:turtle",
-		"onCommand:extension.startMarkdown"
+		"onCommand:skos-ttl-editor.startMarkdown"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
 		"commands": [
 			{
-				"command": "extension.addConcept",
+				"command": "skos-ttl-editor.addConcept",
 				"title": "Add Concept"
 			},
 			{
-				"command": "extension.appendToScheme",
+				"command": "skos-ttl-editor.appendToScheme",
 				"title": "Append Concept to Scheme"
 			},
 			{
-				"command": "extension.appendSubtreeToScheme",
+				"command": "skos-ttl-editor.appendSubtreeToScheme",
 				"title": "Append Subtree to Scheme"
 			},
 			{
-				"command": "extension.complementFiles",
-				"title": "Complement with all files in workspace",
+				"command": "skos-ttl-editor.complementFiles",
+				"title": "Load all files in workspace",
+				"icon": {
+				  "light": "resources/light/add_documents.svg",
+				  "dark": "resources/dark/add_folder.svg"
+				}
+			},
+			{
+				"command": "skos-ttl-editor.reload",
+				"title": "Load only current file",
 				"icon": {
 				  "light": "resources/light/refresh.svg",
 				  "dark": "resources/dark/refresh.svg"
@@ -49,30 +57,35 @@
 		"menus": {
 			"view/item/context": [
 				{
-					"command": "extension.addConcept",
+					"command": "skos-ttl-editor.addConcept",
 					"when": "view == skosOutline"
 				},
 				{
-					"command": "extension.appendToScheme",
+					"command": "skos-ttl-editor.appendToScheme",
 					"when": "view == skosOutline"
 				},
 				{
-					"command": "extension.appendSubtreeToScheme",
+					"command": "skos-ttl-editor.appendSubtreeToScheme",
 					"when": "view == skosOutline"
 				}
 			],
 			"view/title": [
 				{
-					"command": "extension.complementFiles",
+					"command": "skos-ttl-editor.complementFiles",
+					"when": "view == skosOutline",
+					"group": "navigation"
+				},
+				{
+					"command": "skos-ttl-editor.reload",
 					"when": "view == skosOutline",
 					"group": "navigation"
 				}
 			]
 		},		
 		"configuration":{
-			"title": "Markdown Configuration",
+			"title": "SKOS Turtle Editor",
 			"properties": {
-				"extension.customAutoCompletePredicates": {
+				"skos-ttl-editor.customAutoCompletePredicates": {
 					"type": "object",
 					"default": {
 						"prov:": ["wasDerivedFrom"],
@@ -83,14 +96,14 @@
 					},
 					"description": "Defines custom autocomplete predicates."
 				},
-				"extension.customAutoCompleteObjects": {
+				"skos-ttl-editor.customAutoCompleteObjects": {
 					"type": "object",
 					"default": {
 						"dwh:": ["integerRestriction","stringRestriction","largeStringRestriction","floatRestriction","partialDateRestriction","dateRestriction"]
 					},
 					"description": "Defines custom autocomplete objects."
 				},
-				"extension.customIcons": {
+				"skos-ttl-editor.customIcons": {
 					"type": "object",
 					"default": [
 						{
