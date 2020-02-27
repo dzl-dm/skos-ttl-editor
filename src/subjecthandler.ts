@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import { SkosNode } from './skosnode';
+import { LocatedText } from './parser';
 
-export class SubjectHandler { 
+export class SubjectHandler {     
     getEmptySkosSubject(concept:string):SkosSubject{
         return {
             concept:concept,
-            label:concept,
+            labels:{},
             children:[],
             parents:[],
             broader:[],
@@ -74,12 +75,12 @@ export class SubjectHandler {
             let item = sss[key];
     
             item.description = new vscode.MarkdownString();
-            item.description.appendMarkdown(item.label+"\n---\n");
+            item.description.appendMarkdown(this.getLabel(item)+"\n---\n");
             
             let pathMarkdown = "";
             let paths = this.getPaths([{top:item,stringPath:[]}]);
             paths.forEach((path:{top: SkosSubject,stringPath: String[]})=>{
-                let stringPath = (<String[]>[path.top.label||path.top.concept]).concat(path.stringPath);
+                let stringPath = (<String[]>[this.getLabel(path.top)]).concat(path.stringPath);
                 stringPath.forEach((s,index) => {
                     for (let i=0;i<index;i++){
                         pathMarkdown+="    ";
@@ -103,7 +104,7 @@ export class SubjectHandler {
                 let newpaths:{top: SkosSubject,stringPath: String[]}[] = path.top.parents.map(p => { 
                     return {
                         top:p,
-                        stringPath:(<String[]>[path.top.label||path.top.concept]).concat(path.stringPath)
+                        stringPath:(<String[]>[this.getLabel(path.top)]).concat(path.stringPath)
                     };
                 });
                 result = result.concat(this.getPaths(newpaths));
@@ -132,7 +133,10 @@ export class SubjectHandler {
                     }
 
                     sss[subjectname].children.push(...ss.children);
-                    sss[subjectname].label = sss[subjectname].label !== subjectname && sss[subjectname].label || ss.label;
+                    Object.keys(ss.labels).forEach(lang => {
+                        sss[subjectname].labels[lang] = sss[subjectname].labels[lang] || [];
+                        sss[subjectname].labels[lang].push(...ss.labels[lang]);
+                    });
                     sss[subjectname].narrower.push(...ss.narrower);
                     sss[subjectname].broader.push(...ss.broader);
                     sss[subjectname].notations.push(...ss.notations);
@@ -167,11 +171,19 @@ export class SubjectHandler {
         });
         return result;
     }
+
+    getLabel(s:SkosSubject):string{
+        if (!Object.keys(s.labels).includes("en")){
+            return s.concept;
+        } else {
+            return s.labels["en"][0].object.text;
+        }
+    }
 }
 
 export interface SkosSubject {
 	concept:string;
-	label:string;
+	labels:{ [id : string] : LocatedPredicateObject[] };
 	broader:string[];
 	narrower:string[];
 	children:SkosSubject[];
@@ -189,4 +201,10 @@ export interface SkosSubject {
     members:string[];
     topconcepts:string[];
 	type:"skos:Concept"|"skos:ConceptScheme"|"skos:Collection"|undefined;
+}
+
+export interface LocatedPredicateObject {
+    location:vscode.Location;
+    predicate:LocatedText;
+    object:LocatedText;
 }

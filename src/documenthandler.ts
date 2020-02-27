@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
-import { SkosSubject } from './subjecthandler';
+import { SkosSubject, SubjectHandler } from './subjecthandler';
 
-export class DocumentHandler {  
+export class DocumentHandler { 
+    subjectHandler:SubjectHandler;
+    constructor(subjectHandler:SubjectHandler){
+        this.subjectHandler=subjectHandler;
+    } 
     async insertText(sss:SkosSubject[]|SkosSubject, text:string, type:"append"|"after"):Promise<any>{
         return new Promise(async (resolve,reject)=>{
             let concepts = (<SkosSubject[]>(sss instanceof Array && sss || [sss])).sort((a,b)=>{
@@ -39,7 +43,7 @@ export class DocumentHandler {
                     textBefore:string,
                     textAfter:string
                 }[]>concepts.filter(c => {
-                    if (c.occurances.length === 0 && type === "append") { vscode.window.showErrorMessage(c.label + " occurs nowhere."); return false; }
+                    if (c.occurances.length === 0 && type === "append") { vscode.window.showErrorMessage(this.subjectHandler.getLabel(c) + " occurs nowhere."); return false; }
                     if (c.occurances.length === 0 && type === "after" && !vscode.window.activeTextEditor) { vscode.window.showErrorMessage("No open editor to insert."); return false; }
                     return true;
                 }).map(c => {
@@ -116,7 +120,7 @@ export class DocumentHandler {
                     if (!editor){return;}
                     editor.revealRange(location.range);
                     editor.selections = [new vscode.Selection(
-                        new vscode.Position(location.range.start.line-1,0),
+                        new vscode.Position(location.range.start.line,0),
                         location.range.end)];
                     resolve();
                 });

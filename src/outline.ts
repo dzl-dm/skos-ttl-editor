@@ -56,6 +56,7 @@ import {
         }
         treeItem.iconPath = this.getIcon(element);
         treeItem.description = element.getDescription();
+        treeItem.id = element.getParent()?.getConcept() + "/" + element.getConcept();
         treeItem.command = {
           arguments: [ element ],
           title: "Selection",

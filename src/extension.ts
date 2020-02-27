@@ -5,10 +5,12 @@ import * as parser from './parser';
 import { SkosParser } from './parser';
 import { SkosSubject, SubjectHandler } from './subjecthandler';
 import { DocumentHandler } from './documenthandler';
+import { SemanticHandler } from './semantichandler';
 
-let skosParser = new SkosParser();
+let semanticHandler = new SemanticHandler();
 let subjectHandler = new SubjectHandler();
-let documentHandler = new DocumentHandler();
+let skosParser = new SkosParser(subjectHandler);
+let documentHandler = new DocumentHandler(subjectHandler);
 
 export function activate(context: vscode.ExtensionContext) {
 	let allSkosSubjects: { [id: string] : { [id: string] : SkosSubject; }} = {};
@@ -65,6 +67,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	function loadTextDocuments(documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],inputThroughTyping:boolean=true):Promise<any>{
 		return new Promise((resolve,reject)=>{
+			semanticHandler.reset();
 			let numberOfDocuments:number = documents.length;
 			if (numberOfDocuments > 1) {
 				vscode.window.showInformationMessage("Loading "+numberOfDocuments+" documents...");
@@ -96,6 +99,7 @@ export function activate(context: vscode.ExtensionContext) {
 						});
 						subjectHandler.updateReferences(mergedSkosSubjects);
 						createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
+						semanticHandler.checkSemantics(mergedSkosSubjects);
 						resolve();
 					}
 				});
@@ -151,8 +155,8 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	function getConceptsAtRange(document:vscode.TextDocument, range:vscode.Range):SkosSubject[]{
-		let lineFrom = range.start.line+1;
-		let lineTo = range.end.line+1;
+		let lineFrom = range.start.line;
+		let lineTo = range.end.line;
 		let keys = Object.keys(mergedSkosSubjects);
 		let concepts:SkosSubject[]=[];
 		for (let i = 0; i < keys.length; i++) {
@@ -211,6 +215,9 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('skos-ttl-editor.complementFiles', () => {
 		if (vscode.window.activeTextEditor){
 			vscode.workspace.findFiles('*.ttl').then(files => {
+				if (files.length === 0){
+					vscode.window.showInformationMessage("No files to load. Did you open a folder in Visual Studio Code?");
+				}
 				loadTextDocuments(
 					files.filter(file => !Object.keys(allSkosSubjects).includes(file.path))
 						.map(file => vscode.workspace.openTextDocument(file.path)),
@@ -320,7 +327,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		let objectrange = document.getWordRangeAtPosition(position,new RegExp("skos:(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
 		if (objectrange) {
 			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
-				let ci = new vscode.CompletionItem(ss.label,vscode.CompletionItemKind.Property);
+				let ci = new vscode.CompletionItem(subjectHandler.getLabel(ss),vscode.CompletionItemKind.Property);
 				ci.insertText = ss.concept;
 				ci.documentation = ss.description;
 				return ci;
@@ -385,7 +392,7 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 		});
 		node.setNodeAttributes({
 			children:childnodes,
-			label:m.label,
+			label:subjectHandler.getLabel(m),
 			notations:m.notations,
 			iconname: getIconName(m),
 			occurances: m.occurances,

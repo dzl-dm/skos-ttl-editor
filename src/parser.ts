@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
-import { SkosSubject, SubjectHandler } from './subjecthandler';
-
-let subjectHandler = new SubjectHandler();
+import { SkosSubject, SubjectHandler, LocatedPredicateObject } from './subjecthandler';
 
 export class SkosParser {
+    subjectHandler:SubjectHandler;
+    constructor(subjectHandler:SubjectHandler){
+        this.subjectHandler=subjectHandler;
+    }
+
     parseTextDocument(document:vscode.TextDocument|undefined): { [id: string] : SkosSubject; }|undefined {
         if (!document){
             return {};
@@ -21,44 +24,68 @@ export class SkosParser {
             return undefined;
         }*/
     
-        let statements = this.getStatements(resttext);
+        let statements = this.getStatements(document,resttext);
         return this.appendSSS(document,statements);
     }
     
-    private getStatements(s:string):StatementMatch[]{
-        let result:StatementMatch[]=[];
-        let lineStartPos = 1;
-        let lineEndPos = 0;
-        let lastMatchIndex = 0;
-        let match, tempmatch;
+    private getStatements(document:vscode.TextDocument,s:string):LocatedText[]{
+        let result:LocatedText[]=[];
+        let tempmatch;
         let triples_match = new RegExp(triples,"g");
+        let locatedDocumentText:LocatedText = {
+            location: new vscode.Location(
+                document.uri,
+                new vscode.Range(
+                    new vscode.Position(0,0),
+                    new vscode.Position(document.lineCount-1,document.lineAt(document.lineCount-1).range.end.character)
+                )
+            ),
+            text:s
+        };
         
         while (tempmatch = triples_match.exec(s)){
-            match = tempmatch[0].replace(/[\r\n\s]*$/,"");
-            let linesbetween = s.substring(lastMatchIndex,tempmatch.index).split(/\r\n|\r|\n/);
-            let linesbetweenCount = linesbetween.length-2;
-            lineStartPos = lineStartPos + linesbetweenCount + 1;
-            let matchLines = match.split(/\r\n|\r|\n/);
-            lineEndPos = lineStartPos + matchLines.length-2;
-            lastMatchIndex = tempmatch.index;
-            let fromChar = linesbetween[linesbetween.length-1].length;
-            let toChar = match.length - Math.max(match.lastIndexOf("\r"),match.lastIndexOf("\n"),0);
-    
             result.push({
-                match:match,
-                fromLine:lineStartPos-1,
-                toLine:lineEndPos,
-                fromChar:fromChar,
-                toChar:toChar
+                location:this.getLocationOfMatchWithinLocatedText(locatedDocumentText,tempmatch),
+                text:tempmatch[0]
             });
         }
         return result;
     }
+
+    private getLocationOfMatchWithinLocatedText(lt:LocatedText,match:RegExpExecArray|string,offset?:number):vscode.Location{
+        let matchtext = "";
+        let matchindex = 0;
+        if (typeof match === "string"){
+            matchtext = match;
+            matchindex = lt.text.indexOf(match);
+        }
+        else if ((match as RegExpExecArray).length){
+            matchtext = match[0];
+            matchindex = match.index;
+        }
+        let linesBefore = lt.text.substr(0,matchindex+(offset||0)).split(/\r\n|\r|\n/);
+        let startLinePos = lt.location.range.start.line + linesBefore.length -1;
+        let fromChar = linesBefore[linesBefore.length-1].length;
+        if (linesBefore.length === 1){ fromChar += lt.location.range.start.character; }
+        let linesWithin = matchtext.split(/\r\n|\r|\n/);
+        let endLinePos = startLinePos + linesWithin.length -1;
+        let toChar = linesWithin.length === 1 ? fromChar + matchtext.length : linesWithin[linesWithin.length-1].length;
+        return new vscode.Location(lt.location.uri,new vscode.Range(new vscode.Position(startLinePos,fromChar),new vscode.Position(endLinePos,toChar)));
+    }
+
+    private modifyLocation(location:vscode.Location,modification:{lineFrom:number,charFrom:number,lineTo:number,charTo:number}):vscode.Location{
+        return new vscode.Location(location.uri,
+            new vscode.Range(
+                new vscode.Position(location.range.start.line+modification.lineFrom,location.range.start.character+modification.charFrom),
+                new vscode.Position(location.range.end.line+modification.lineTo,location.range.end.character+modification.charTo)
+            )
+        );
+    }
     
-    private appendSSS(document:vscode.TextDocument,sms:StatementMatch[]):{ [id: string] : SkosSubject; }{
+    private appendSSS(document:vscode.TextDocument,sms:LocatedText[]):{ [id: string] : SkosSubject; }{
         let sss:{ [id: string] : SkosSubject; } = {};
         sms.forEach(sm => {
-            let match = sm.match;
+            let match = sm.text;
             let r_subject = new RegExp(subject_named,"g"), match_subject, s;
             let p;
             let r_object = new RegExp(object_named,"g"), match_object, o;
@@ -75,19 +102,17 @@ export class SkosParser {
                 }
     
                 if (!sss[s]){
-                    sss[s] = subjectHandler.getEmptySkosSubject(s);
+                    sss[s] = this.subjectHandler.getEmptySkosSubject(s);
                 }
+                let location = new vscode.Location(
+                    document.uri,
+                    sm.location.range
+                );
                 sss[s].occurances.push({
-                    location: new vscode.Location(
-                        document.uri,
-                        new vscode.Range(
-                            new vscode.Position(sm.fromLine,sm.fromChar),
-                            new vscode.Position(sm.toLine,sm.toChar)
-                        )
-                    ),
+                    location: location,
                     statement: match
                 });
-    
+
                 while (match_po = r_po.exec(match.substr(s.length))){
                     p = match_po.groups && match_po.groups["predicate"];
                     po = match_po.groups && match_po.groups["objectList"];
@@ -96,8 +121,23 @@ export class SkosParser {
                         literal = match_object.groups && (match_object.groups["slq"] || match_object.groups["slsq"] || match_object.groups["sllq"] || match_object.groups["sllsq"]) || "";
                         lang = match_object.groups && match_object.groups["lang"];
     
-                        if (p === "skos:prefLabel" && lang==="en"){
-                            sss[s].label=literal;
+                        if (p === "skos:prefLabel"){
+                            lang = lang || "nolanguage";
+                            if (!sss[s].labels[lang]){sss[s].labels[lang]=[];}
+                            let po_location = this.getLocationOfMatchWithinLocatedText(sm,match_po,s.length);
+                            let predicateLocation = this.getLocationOfMatchWithinLocatedText({location:po_location,text:match_po[0]},p);
+                            let objectLocation = this.getLocationOfMatchWithinLocatedText({location:po_location,text:match_po[0]},literal);                            
+                            sss[s].labels[lang].push({
+                                location:po_location,
+                                predicate:{
+                                    location:predicateLocation,
+                                    text:document.getText(predicateLocation.range)
+                                },
+                                object:{
+                                    location:objectLocation,
+                                    text:document.getText(objectLocation.range)
+                                }
+                            });
                         }
                         else if (p === "skos:broader"){
                             sss[s].broader.push(o);
@@ -129,14 +169,6 @@ export class SkosParser {
         });
         return sss;
     }
-}
-
-interface StatementMatch {
-	match:string;
-	fromLine:number;
-    toLine:number;
-    fromChar:number;
-	toChar:number;
 }
 
 export const hw = `[\\u0009\\u0020\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000]`; //horizontal whitespace
@@ -182,7 +214,7 @@ export const collection 			= `\\((?:${iri}|${Blanknode}|${literal})*\\)`; // lef
 export const object				= `(?:${iri}|${Blanknode}|${collection}|${literal})`; //left out blankNodePropertyList causing recursion
 export const subject				= `(?:${iri}|${Blanknode}|${collection})`;
 export const objectList			= `${object}(?:\\s*,\\s*${object})*`;
-export const predicateObjectList 	= `${verb}\\s*${objectList}(?:\\s*;\\s*(?:${verb}\\s*${objectList})?)*`;
+export const predicateObjectList 	= `${verb}\\s*${objectList}(?:\\s*;(?:\\s*${verb}\\s*${objectList})?)*`;
 export const blankNodePropertyList = `\\[\\s*${predicateObjectList}\\s*\\]`;
 export const triples 				= `(?:${subject}\\s+${predicateObjectList}|${blankNodePropertyList}(?:\\s+${predicateObjectList})?)`;
 export const sparqlPrefix 			= `PREFIX\\s+${PNAME_NS}\\s+${IRIREF}`;
@@ -205,3 +237,8 @@ export const subject_named			= `(?<subject>${iri}|${Blanknode}|${collection})`;
 export const predicate_named		= `(?<predicate>${predicate}|a)`;
 export const object_named			= `(?<object>(?:${iri}|${Blanknode}|${collection}|${literal_named}))`;
 export const po_named 				= `${predicate_named}\\s+(?<objectList>${objectList})`;
+
+export interface LocatedText {
+    location:vscode.Location;
+    text:string;
+}
