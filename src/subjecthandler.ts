@@ -17,7 +17,7 @@ export class SubjectHandler {
             occurances:[],
             schemes:[],
             treeviewNodes:[],
-            type:undefined,
+            types:[],
             collections:[],
             topconcepts:[],
             members:[]
@@ -146,7 +146,7 @@ export class SubjectHandler {
                     sss[subjectname].collections.push(...ss.collections);
                     sss[subjectname].topconcepts.push(...ss.topconcepts);
                     sss[subjectname].members.push(...ss.members);
-                    sss[subjectname].type = ss.type !== undefined && ss.type || sss[subjectname].type;
+                    sss[subjectname].types.push(...ss.types);
 
                     sss[subjectname].children = sss[subjectname].children.filter((value,index,self) => self.map(c => c.concept).indexOf(value.concept) === index);
                     sss[subjectname].parents = sss[subjectname].parents.filter((value,index,self) => self.map(p => p.concept).indexOf(value.concept) === index);
@@ -157,6 +157,7 @@ export class SubjectHandler {
                     sss[subjectname].collections = sss[subjectname].collections.filter((value,index,self) => self.indexOf(value) === index);
                     sss[subjectname].topconcepts = sss[subjectname].topconcepts.filter((value,index,self) => self.indexOf(value) === index);
                     sss[subjectname].members = sss[subjectname].members.filter((value,index,self) => self.indexOf(value) === index);
+                    sss[subjectname].types = sss[subjectname].types.filter((value,index,self) => self.indexOf(value) === index);
                 }
                 if (!sss[subjectname]){console.log(subjectname);}
             });
@@ -200,7 +201,7 @@ export interface SkosSubject {
     collections:string[];
     members:string[];
     topconcepts:string[];
-	type:"skos:Concept"|"skos:ConceptScheme"|"skos:Collection"|undefined;
+	types:string[];
 }
 
 export interface LocatedPredicateObject {

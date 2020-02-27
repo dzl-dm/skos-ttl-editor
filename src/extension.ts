@@ -30,10 +30,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showQuickPick(
 			Object.keys(mergedSkosSubjects)
 				.map(key => mergedSkosSubjects[key])
-				.filter(s => s.type === "skos:ConceptScheme")
+				.filter(s => s.types.includes("skos:ConceptScheme"))
 				.map(s => s.concept)
 		).then(a => {
-			if (!a || node.getType()==="skos:ConceptScheme") {return;}
+			if (!a || node.getTypes().includes("skos:ConceptScheme")) {return;}
 			documentHandler.insertText(
 				mergedSkosSubjects[node.getConcept()],
 				"\tskos:inScheme "+a+" ;",
@@ -47,10 +47,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showQuickPick(
 			Object.keys(mergedSkosSubjects)
 				.map(key => mergedSkosSubjects[key])
-				.filter(s => s.type === "skos:ConceptScheme")
+				.filter(s => s.types.includes("skos:ConceptScheme"))
 				.map(s => s.concept)
 		).then(a => {
-			if (!a || node.getType()==="skos:ConceptScheme") {return;}
+			if (!a || node.getTypes().includes("skos:ConceptScheme")) {return;}
 			let concepts = subjectHandler.getSubTree(mergedSkosSubjects[node.getConcept()]).filter(s => !s.schemes.includes(a));
 			documentHandler.insertText(
 				concepts,
@@ -376,7 +376,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [id: string] : SkosSubject; } ){	
 	let topsss: SkosSubject[]=[];
 	Object.keys(sss).forEach(key => {
-		if (sss[key].parents.filter(p => p.type !== "skos:ConceptScheme").length===0){
+		if (sss[key].parents.filter(p => !p.types.includes("skos:ConceptScheme")).length===0){
 			topsss.push(sss[key]);
 		}
 	});
@@ -396,7 +396,7 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 			notations:m.notations,
 			iconname: getIconName(m),
 			occurances: m.occurances,
-			type: m.type
+			types: m.types
 		});
 		m.treeviewNodes.push(node);
 	}

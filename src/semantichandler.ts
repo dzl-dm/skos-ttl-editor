@@ -25,6 +25,8 @@ export class SemanticHandler {
     checkSemantics(mergedSkosSubjects: { [id: string]: SkosSubject; }){
         Object.keys(mergedSkosSubjects).forEach(key => {
             let sss = mergedSkosSubjects[key];
+
+            //label check
             Object.keys(sss.labels).forEach(lang => {
                 if (sss.labels[lang].length > 1) {
                     sss.labels[lang].forEach(label => {
@@ -35,6 +37,19 @@ export class SemanticHandler {
             if (!Object.keys(sss.labels).includes("en")){  
                 sss.occurances.forEach(occ => {
                     this.addDiagnostic(occ.location,vscode.DiagnosticSeverity.Warning,"No english 'skos:prefLabel' defined.");                    
+                });
+            }
+
+            //type check
+            let skosTypes = sss.types.filter(t => ["skos:ConceptScheme","skos:Collection","skos:Concept"].includes(t));
+            if (skosTypes.length === 0){
+                sss.occurances.forEach(occ => {
+                    this.addDiagnostic(occ.location,vscode.DiagnosticSeverity.Warning,"No 'skos:ConceptScheme', 'skos:Collection' or 'skos:Concept' type defined.");                    
+                });
+            }
+            if (skosTypes.length > 1){
+                sss.occurances.forEach(occ => {
+                    this.addDiagnostic(occ.location,vscode.DiagnosticSeverity.Error,"Invalid SKOS type combination: "+skosTypes.map(x => "'"+x+"'").join(",")+".");                    
                 });
             }
         });

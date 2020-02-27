@@ -10,7 +10,7 @@
 	private virtual?:boolean;
 	private description:vscode.MarkdownString|undefined;
     private iconname:string|undefined;
-    private type:"skos:Concept"|"skos:ConceptScheme"|"skos:Collection"="skos:Concept";
+    private types:string[]=[];
     private occurances:{
         location:vscode.Location,
         statement:string
@@ -25,7 +25,7 @@
         label?:string,
         notations?:string[],
         iconname?:string,
-        type?:"skos:Concept"|"skos:ConceptScheme"|"skos:Collection",
+        types?:string[],
         occurances?:{
             location:vscode.Location,
             statement:string
@@ -49,8 +49,8 @@
         if (attributes.occurances){
             this.occurances = attributes.occurances;
         }
-        if (attributes.type){
-            this.type = attributes.type;
+        if (attributes.types){
+            this.types = attributes.types;
         }
     }
     getLabel(){
@@ -77,7 +77,7 @@
     getOccurances(){
         return this.occurances;
     }
-    getType():"skos:Concept" | "skos:ConceptScheme" | "skos:Collection"{
-        return this.type;
+    getTypes():string[]{
+        return this.types;
     }
 }

@@ -158,9 +158,7 @@ export class SkosParser {
                             sss[s].notations.push(literal);
                         }
                         else if ((p === "a" || p === "rdf:type")){
-                            if (["skos:Concept","skos:ConceptScheme","skos:Collection"].includes(o)){
-                                sss[s].type = <"skos:Concept"|"skos:ConceptScheme"|"skos:Collection">o;
-                            }
+                            sss[s].types.push(o);
                         }
                         match_object.groups = {};
                     }

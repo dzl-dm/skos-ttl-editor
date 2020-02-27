@@ -36,10 +36,10 @@ import {
             return 0;
           }
         };
-        this.tree = rootNodes.filter(n => n.getType()==="skos:ConceptScheme").sort(treeSortByLabel);
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getType()==="skos:Collection").sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getType()==="skos:Concept").sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => !["skos:ConceptScheme","skos:Collection","skos:Concept"].includes(n.getType())).sort(treeSortByLabel));
+        this.tree = rootNodes.filter(n => n.getTypes().includes("skos:ConceptScheme")).sort(treeSortByLabel);
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes("skos:Collection")).sort(treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes("skos:Concept")).sort(treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => ["skos:ConceptScheme","skos:Collection","skos:Concept"].includes(x)).length === 0).sort(treeSortByLabel));
         this.refresh();
     }
     getChildren(element?: SkosNode): SkosNode[] | Thenable<SkosNode[]> {
@@ -73,10 +73,10 @@ import {
 
     private getIcon(node: SkosNode): any {
       let nodeType;
-      if (node.getType() === "skos:ConceptScheme") {
+      if (node.getTypes().includes("skos:ConceptScheme")) {
         nodeType = "dependency";
       }
-      if (node.getType() === "skos:Collection") {
+      if (node.getTypes().includes("skos:Collection")) {
         nodeType = "folder";
       }
       if (node.getIconname() !== undefined) {
