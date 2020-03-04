@@ -1,26 +1,18 @@
 import * as vscode from 'vscode';
 import { SkosNode } from './skosnode';
-import { LocatedText } from './parser';
+import { LocatedText, LocatedPredicateObject, iridefs, LocatedSubject } from './parser';
 
 export class SubjectHandler {     
-    getEmptySkosSubject(concept:string):SkosSubject{
+    getEmptySkosSubject(concept:LocatedSubject):SkosSubject{
         return {
             concept:concept,
-            labels:{},
+            statements:[],
             children:[],
             parents:[],
-            broader:[],
-            narrower:[],
-            notations:[],
             virtual:true,
             description:new vscode.MarkdownString(""),
             occurances:[],
-            schemes:[],
-            treeviewNodes:[],
-            types:[],
-            collections:[],
-            topconcepts:[],
-            members:[]
+            treeviewNodes:[]
         };
     }
 
@@ -34,10 +26,10 @@ export class SubjectHandler {
     private addReferencedSSS(sss:{ [id: string] : SkosSubject; }){
         Object.keys(sss).forEach(key => {
             let ti = sss[key];
-            ti.broader.concat(ti.narrower).concat(ti.schemes).concat(ti.topconcepts).concat(ti.collections).concat(ti.members).forEach(b => {
-                if (!Object.keys(sss).includes(b)){
-                    let t = this.getEmptySkosSubject(b);
-                    sss[b]=t;
+            this.getStatementsWithHierarchyReference(ti).forEach(b => {
+                if (!Object.keys(sss).includes(b.object.text)){
+                    let t = this.getEmptySkosSubject({text: b.object.text});
+                    sss[b.object.text]=t;
                 }
             });	
         });
@@ -46,27 +38,40 @@ export class SubjectHandler {
     private addHierarchyReferences(sss:{ [id: string] : SkosSubject; }){	
         Object.keys(sss).forEach(key => {
             let ti = sss[key];
-            ti.broader.concat(ti.schemes).forEach(b => {
-                if (Object.keys(sss).includes(b)){
-                    if (sss[b].children.filter(x => x.concept === ti.concept).length === 0) {
-                        sss[b].children.push(ti);
+            getStatementsByPredicate(iridefs.broader,ti).concat(getStatementsByPredicate(iridefs.inScheme,ti)).forEach(b => {
+                if (Object.keys(sss).includes(b.object.text)){
+                    if (sss[b.object.text].children.filter(x => x.concept === ti.concept).length === 0) {
+                        sss[b.object.text].children.push(ti);
                     }
-                    if (ti.parents.filter(x => x.concept === sss[b].concept).length === 0) {
-                        ti.parents.push(sss[b]);
-                    }
-                }
-            });
-            ti.narrower.concat(ti.members).forEach(n => {
-                if (Object.keys(sss).includes(n)){
-                    if (sss[n].parents.filter(x => x.concept === ti.concept).length === 0) {
-                        sss[n].parents.push(ti);
-                    }
-                    if (ti.children.filter(x => x.concept === sss[n].concept).length === 0) {
-                        ti.children.push(sss[n]);
+                    if (ti.parents.filter(x => x.concept === sss[b.object.text].concept).length === 0) {
+                        ti.parents.push(sss[b.object.text]);
                     }
                 }
             });
-            ti.topconcepts.forEach(tc => sss[tc].schemes.push(ti.concept));
+            getStatementsByPredicate(iridefs.narrower,ti).concat(getStatementsByPredicate(iridefs.member,ti)).forEach(n => {
+                if (Object.keys(sss).includes(n.object.text)){
+                    if (sss[n.object.text].parents.filter(x => x.concept === ti.concept).length === 0) {
+                        sss[n.object.text].parents.push(ti);
+                    }
+                    if (ti.children.filter(x => x.concept === sss[n.object.text].concept).length === 0) {
+                        ti.children.push(sss[n.object.text]);
+                    }
+                }
+            });
+            getStatementsByPredicate(iridefs.topConceptOf,ti).forEach(tc => {
+                sss[tc.object.text].statements.push({
+                    location:tc.location,
+                    text:tc.text,
+                    predicate:{
+                        location:tc.predicate.location,
+                        text:iridefs.conceptScheme,
+                    },
+                    object:{
+                        location:tc.object.location,
+                        text:ti.concept.text
+                    }
+                });
+            });
         });
     }
     
@@ -129,35 +134,16 @@ export class SubjectHandler {
                 else {
                     let ss = allSkosSubjects[filename][subjectname];
                     if (!sss[subjectname]){
-                        sss[subjectname] = this.getEmptySkosSubject(subjectname);
+                        sss[subjectname] = this.getEmptySkosSubject(ss.concept);
                     }
 
                     sss[subjectname].children.push(...ss.children);
-                    Object.keys(ss.labels).forEach(lang => {
-                        sss[subjectname].labels[lang] = sss[subjectname].labels[lang] || [];
-                        sss[subjectname].labels[lang].push(...ss.labels[lang]);
-                    });
-                    sss[subjectname].narrower.push(...ss.narrower);
-                    sss[subjectname].broader.push(...ss.broader);
-                    sss[subjectname].notations.push(...ss.notations);
                     sss[subjectname].parents.push(...ss.parents);
                     sss[subjectname].occurances.push(...ss.occurances);
-                    sss[subjectname].schemes.push(...ss.schemes);
-                    sss[subjectname].collections.push(...ss.collections);
-                    sss[subjectname].topconcepts.push(...ss.topconcepts);
-                    sss[subjectname].members.push(...ss.members);
-                    sss[subjectname].types.push(...ss.types);
+                    sss[subjectname].statements.push(...ss.statements);   
 
                     sss[subjectname].children = sss[subjectname].children.filter((value,index,self) => self.map(c => c.concept).indexOf(value.concept) === index);
                     sss[subjectname].parents = sss[subjectname].parents.filter((value,index,self) => self.map(p => p.concept).indexOf(value.concept) === index);
-                    sss[subjectname].narrower = sss[subjectname].narrower.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].broader = sss[subjectname].broader.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].notations = sss[subjectname].notations.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].schemes = sss[subjectname].schemes.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].collections = sss[subjectname].collections.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].topconcepts = sss[subjectname].topconcepts.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].members = sss[subjectname].members.filter((value,index,self) => self.indexOf(value) === index);
-                    sss[subjectname].types = sss[subjectname].types.filter((value,index,self) => self.indexOf(value) === index);
                 }
                 if (!sss[subjectname]){console.log(subjectname);}
             });
@@ -174,23 +160,37 @@ export class SubjectHandler {
     }
 
     getLabel(s:SkosSubject):string{
-        if (!Object.keys(s.labels).includes("en")){
-            return s.concept;
+        let englishLabels = getStatementsByPredicate(iridefs.prefLabel,s).filter(x => x.object.lang==="en");
+        if (englishLabels.length === 0 || !englishLabels[0].object.literal){
+            return s.concept.text;
         } else {
-            return s.labels["en"][0].object.text;
+            return englishLabels[0].object.literal;
         }
+    }
+
+    getStatementsWithObjectReference(s:SkosSubject):LocatedPredicateObject[]{
+        return s.statements.filter(x => !x.object.literal);
+    }
+    
+    getStatementsWithHierarchyReference(s:SkosSubject):LocatedPredicateObject[]{
+        let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept];
+        return s.statements.filter(x => hierarchyReferences.includes(x.predicate.text));
     }
 }
 
+export function getStatementsByPredicate(predicate:string,s:SkosSubject):LocatedPredicateObject[]{
+    return s.statements.filter(x => x.predicate.text===predicate);
+}
+
+export function getObjectValuesByPredicate(predicate:string,s:SkosSubject):string[]{
+    return getStatementsByPredicate(predicate,s).map(x => x.object.text);
+}
+
 export interface SkosSubject {
-	concept:string;
-	labels:{ [id : string] : LocatedPredicateObject[] };
-	broader:string[];
-	narrower:string[];
+    concept:LocatedSubject;
+    statements:LocatedPredicateObject[];
 	children:SkosSubject[];
 	parents:SkosSubject[];
-	schemes:string[];
-	notations:string[];
 	virtual?:boolean;
 	description:vscode.MarkdownString;
 	treeviewNodes:SkosNode[];
@@ -198,14 +198,4 @@ export interface SkosSubject {
 		location:vscode.Location,
 		statement:string
     }[];
-    collections:string[];
-    members:string[];
-    topconcepts:string[];
-	types:string[];
-}
-
-export interface LocatedPredicateObject {
-    location:vscode.Location;
-    predicate:LocatedText;
-    object:LocatedText;
 }

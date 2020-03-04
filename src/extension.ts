@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { SkosOutlineProvider } from './outline';
 import { SkosNode } from './skosnode';
 import * as parser from './parser';
-import { SkosParser } from './parser';
-import { SkosSubject, SubjectHandler } from './subjecthandler';
+import { SkosParser, iridefs } from './parser';
+import { SkosSubject, SubjectHandler, getObjectValuesByPredicate } from './subjecthandler';
 import { DocumentHandler } from './documenthandler';
 import { SemanticHandler } from './semantichandler';
 
@@ -30,10 +30,10 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showQuickPick(
 			Object.keys(mergedSkosSubjects)
 				.map(key => mergedSkosSubjects[key])
-				.filter(s => s.types.includes("skos:ConceptScheme"))
-				.map(s => s.concept)
+				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
+				.map(s => s.concept.text)
 		).then(a => {
-			if (!a || node.getTypes().includes("skos:ConceptScheme")) {return;}
+			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
 			documentHandler.insertText(
 				mergedSkosSubjects[node.getConcept()],
 				"\tskos:inScheme "+a+" ;",
@@ -47,11 +47,11 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.window.showQuickPick(
 			Object.keys(mergedSkosSubjects)
 				.map(key => mergedSkosSubjects[key])
-				.filter(s => s.types.includes("skos:ConceptScheme"))
-				.map(s => s.concept)
+				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
+				.map(s => s.concept.text)
 		).then(a => {
-			if (!a || node.getTypes().includes("skos:ConceptScheme")) {return;}
-			let concepts = subjectHandler.getSubTree(mergedSkosSubjects[node.getConcept()]).filter(s => !s.schemes.includes(a));
+			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
+			let concepts = subjectHandler.getSubTree(mergedSkosSubjects[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
 			documentHandler.insertText(
 				concepts,
 				"\tskos:inScheme "+a+" ;",
@@ -279,10 +279,12 @@ class ConceptReferenceProvider implements vscode.ReferenceProvider {
 	}	
 	provideReferences(document: vscode.TextDocument, position: vscode.Position, context: vscode.ReferenceContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {
 		let referenceIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		let occurances = Object.keys(this.sss).map(key => this.sss[key].occurances)
-			.reduce((prev,curr)=>prev=prev.concat(curr),[])
-			.filter(occ => occ.statement.indexOf(referenceIri)>0);
-		return occurances.map(o => o.location);
+		referenceIri = skosParser.resolve(referenceIri,document) || referenceIri;
+		let locations = Object.keys(this.sss).map(key => this.sss[key].statements)
+			.reduce((prev,curr,index) => prev = prev.concat(curr),[])
+			.filter(s =>  s.object.text === referenceIri)
+			.map(s => s.location);
+		return locations;
 	}
 }
 
@@ -293,6 +295,7 @@ class ConceptImplementationProvider implements vscode.ImplementationProvider {
 	}	
 	provideImplementation(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {
 		let implementationIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
+		implementationIri = skosParser.resolve(implementationIri,document) || implementationIri;
 		let items = Object.keys(this.sss).filter(i => i===implementationIri);
 		return this.sss[items[0]].occurances.map(o => o.location);
 	}
@@ -328,7 +331,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		if (objectrange) {
 			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
 				let ci = new vscode.CompletionItem(subjectHandler.getLabel(ss),vscode.CompletionItemKind.Property);
-				ci.insertText = ss.concept;
+				ci.insertText = ss.concept.text;
 				ci.documentation = ss.description;
 				return ci;
 			});
@@ -376,7 +379,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [id: string] : SkosSubject; } ){	
 	let topsss: SkosSubject[]=[];
 	Object.keys(sss).forEach(key => {
-		if (sss[key].parents.filter(p => !p.types.includes("skos:ConceptScheme")).length===0){
+		if (sss[key].parents.filter(p => !getObjectValuesByPredicate(iridefs.type,p).includes(iridefs.conceptScheme)).length===0){
 			topsss.push(sss[key]);
 		}
 	});
@@ -384,8 +387,8 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 	function addSkosNodes(m:SkosSubject,node:SkosNode,scheme?:string){
 		let childnodes:SkosNode[]=[];
 		m.children.forEach(c => {
-			if (scheme && !c.schemes.includes(scheme)){return;}
-			let childnode = new SkosNode(c.concept);
+			if (scheme && !getObjectValuesByPredicate(iridefs.inScheme,c).includes(scheme)){return;}
+			let childnode = new SkosNode(c.concept.text);
 			childnode.setNodeAttributes({parent:node});
 			childnodes.push(childnode);
 			addSkosNodes(c,childnode,scheme);
@@ -393,26 +396,26 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 		node.setNodeAttributes({
 			children:childnodes,
 			label:subjectHandler.getLabel(m),
-			notations:m.notations,
+			notations:getObjectValuesByPredicate(iridefs.notation,m),
 			iconname: getIconName(m),
 			occurances: m.occurances,
-			types: m.types
+			types: getObjectValuesByPredicate(iridefs.type,m)
 		});
 		m.treeviewNodes.push(node);
 	}
 	let schemes = Object.keys(sss)
-		.map(key => sss[key].schemes)
+		.map(key => getObjectValuesByPredicate(iridefs.inScheme,sss[key]))
 		.reduce((prev,current) => prev = prev.concat(current),[])
 		.filter((value, index, array) => array.indexOf(value)===index);
 	topsss.forEach(m => {
-		let topnode = new SkosNode(m.concept);
+		let topnode = new SkosNode(m.concept.text);
 		topnodes.push(topnode);
-		if (schemes.includes(m.concept)){
+		if (schemes.includes(m.concept.text)){
 			let topschemenodes = Object.keys(sss)
 				.map(key => sss[key])
-				.filter(s => s.schemes.includes(m.concept) && !s.parents.map(p => p.schemes).reduce((p,c)=>p=p.concat(c),[]).includes(m.concept));
+				.filter(s => getObjectValuesByPredicate(iridefs.inScheme,s).includes(m.concept.text) && !s.parents.map(p => getObjectValuesByPredicate(iridefs.inScheme,p)).reduce((p,c)=>p=p.concat(c),[]).includes(m.concept.text));
 			m.children = topschemenodes;
-			addSkosNodes(m,topnode,m.concept);
+			addSkosNodes(m,topnode,m.concept.text);
 		}
 		else {
 			addSkosNodes(m,topnode);

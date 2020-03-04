@@ -7,6 +7,7 @@ import {
     TreeView,
     window
   } from "vscode";
+  import { iridefs } from './parser';
 
   import * as vscode from 'vscode';
   import { SkosNode } from './skosnode';
@@ -36,10 +37,10 @@ import {
             return 0;
           }
         };
-        this.tree = rootNodes.filter(n => n.getTypes().includes("skos:ConceptScheme")).sort(treeSortByLabel);
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes("skos:Collection")).sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes("skos:Concept")).sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => ["skos:ConceptScheme","skos:Collection","skos:Concept"].includes(x)).length === 0).sort(treeSortByLabel));
+        this.tree = rootNodes.filter(n => n.getTypes().includes(iridefs.conceptScheme)).sort(treeSortByLabel);
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.collection)).sort(treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.concept)).sort(treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => [iridefs.conceptScheme,iridefs.collection,iridefs.concept].includes(x)).length === 0).sort(treeSortByLabel));
         this.refresh();
     }
     getChildren(element?: SkosNode): SkosNode[] | Thenable<SkosNode[]> {
@@ -73,10 +74,10 @@ import {
 
     private getIcon(node: SkosNode): any {
       let nodeType;
-      if (node.getTypes().includes("skos:ConceptScheme")) {
+      if (node.getTypes().includes(iridefs.conceptScheme)) {
         nodeType = "dependency";
       }
-      if (node.getTypes().includes("skos:Collection")) {
+      if (node.getTypes().includes(iridefs.collection)) {
         nodeType = "folder";
       }
       if (node.getIconname() !== undefined) {
