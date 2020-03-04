@@ -3,7 +3,7 @@
 	"publisher": "markstoehr",
 	"displayName": "SKOS Turtle Editor",
 	"description": "",
-	"version": "0.0.4",
+	"version": "0.0.5",
 	"engines": {
 		"vscode": "^1.40.0"
 	},
@@ -107,15 +107,47 @@
 					"type": "object",
 					"default": [
 						{
-							"rule": "dwh:restriction dwh:integerRestriction",
-							"icon": "number"
+							"rule": {								
+								"predicate": "<http://sekmi.de/histream/dwh#restriction>",
+								"object": "<http://sekmi.de/histream/dwh#integerRestriction>"
+							},
+							"icon": "number",
+							"target": "subject"
 						},
 						{
-							"rule": "dwh:restriction dwh:floatRestriction",
-							"icon": "number"
+							"rule": {								
+								"predicate": "<http://sekmi.de/histream/dwh#restriction>",
+								"object": "<http://sekmi.de/histream/dwh#floatRestriction>"
+							},
+							"icon": "number",
+							"target": "subject"
+						},
+						{
+							"rule": {								
+								"predicate": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#partOf>"
+							},
+							"icon": "puzzle",
+							"target": "subject"
+						},
+						{
+							"rule": {								
+								"predicate": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#hasPart>"
+							},
+							"icon": "puzzle",
+							"target": "object"
 						}
 					],
 					"description": "Defines rules for custom treeview icons."
+				},
+				"skos-ttl-editor.customHierarchicalReferencePredicatesNarrower": {
+					"type": "array",
+					"default": [ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#hasPart>" ],
+					"description": "List of narrower-like hierarchical references."
+				},
+				"skos-ttl-editor.customHierarchicalReferencePredicatesBroader": {
+					"type": "array",
+					"default": [ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#partOf>" ],
+					"description": "List of broader-like hierarchical references."
 				}
 			}
 		},

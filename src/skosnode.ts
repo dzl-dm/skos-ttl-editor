@@ -1,7 +1,7 @@
   import * as vscode from 'vscode';
+import { SkosResource } from './subjecthandler';
   
   export class SkosNode {
-
 	private concept:string;
 	private label:string|undefined;
 	private children:SkosNode[]=[];

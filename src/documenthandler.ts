@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
-import { SkosSubject, SubjectHandler } from './subjecthandler';
+import { SkosResource, SubjectHandler } from './subjecthandler';
 
 export class DocumentHandler { 
     subjectHandler:SubjectHandler;
     constructor(subjectHandler:SubjectHandler){
         this.subjectHandler=subjectHandler;
     } 
-    async insertText(sss:SkosSubject[]|SkosSubject, text:string, type:"append"|"after"):Promise<any>{
+    async insertText(sss:SkosResource[]|SkosResource, text:string, type:"append"|"after"):Promise<any>{
         return new Promise(async (resolve,reject)=>{
-            let concepts = (<SkosSubject[]>(sss instanceof Array && sss || [sss])).sort((a,b)=>{
+            let concepts = (<SkosResource[]>(sss instanceof Array && sss || [sss])).sort((a,b)=>{
                 if (a.occurances[0].location.uri.fsPath > b.occurances[0].location.uri.fsPath) {
                     return -1;
                 }

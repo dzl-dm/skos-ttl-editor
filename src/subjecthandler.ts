@@ -3,7 +3,7 @@ import { SkosNode } from './skosnode';
 import { LocatedText, LocatedPredicateObject, iridefs, LocatedSubject } from './parser';
 
 export class SubjectHandler {     
-    getEmptySkosSubject(concept:LocatedSubject):SkosSubject{
+    getEmptySkosSubject(concept:LocatedSubject):SkosResource{
         return {
             concept:concept,
             statements:[],
@@ -16,14 +16,15 @@ export class SubjectHandler {
         };
     }
 
-    updateReferences(sss: { [id: string] : SkosSubject; }){
+    updateReferences(sss: { [id: string] : SkosResource; }){
         this.addReferencedSSS(sss);
         this.addHierarchyReferences(sss);
         this.addDescription(sss);
+        this.addIcon(sss);
     }
     
     
-    private addReferencedSSS(sss:{ [id: string] : SkosSubject; }){
+    private addReferencedSSS(sss:{ [id: string] : SkosResource; }){
         Object.keys(sss).forEach(key => {
             let ti = sss[key];
             this.getStatementsWithHierarchyReference(ti).forEach(b => {
@@ -35,10 +36,14 @@ export class SubjectHandler {
         });
     }
     
-    private addHierarchyReferences(sss:{ [id: string] : SkosSubject; }){	
+    private addHierarchyReferences(sss:{ [id: string] : SkosResource; }){	
+        let customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
+        let customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
+        let predicatesNarrower = [ iridefs.narrower, iridefs.member ].concat(customHierarchicalReferencePredicatesNarrower);
+        let predicatesBroader = [ iridefs.broader, iridefs.inScheme ].concat(customHierarchicalReferencePredicatesBroader);
         Object.keys(sss).forEach(key => {
             let ti = sss[key];
-            getStatementsByPredicate(iridefs.broader,ti).concat(getStatementsByPredicate(iridefs.inScheme,ti)).forEach(b => {
+            getStatementsByPredicate(predicatesBroader,ti).forEach(b => {
                 if (Object.keys(sss).includes(b.object.text)){
                     if (sss[b.object.text].children.filter(x => x.concept === ti.concept).length === 0) {
                         sss[b.object.text].children.push(ti);
@@ -48,7 +53,7 @@ export class SubjectHandler {
                     }
                 }
             });
-            getStatementsByPredicate(iridefs.narrower,ti).concat(getStatementsByPredicate(iridefs.member,ti)).forEach(n => {
+            getStatementsByPredicate(predicatesNarrower,ti).forEach(n => {
                 if (Object.keys(sss).includes(n.object.text)){
                     if (sss[n.object.text].parents.filter(x => x.concept === ti.concept).length === 0) {
                         sss[n.object.text].parents.push(ti);
@@ -75,7 +80,7 @@ export class SubjectHandler {
         });
     }
     
-    private addDescription(sss:{ [id: string] : SkosSubject; }){
+    private addDescription(sss:{ [id: string] : SkosResource; }){
         Object.keys(sss).forEach(key => {
             let item = sss[key];
     
@@ -84,7 +89,7 @@ export class SubjectHandler {
             
             let pathMarkdown = "";
             let paths = this.getPaths([{top:item,stringPath:[]}]);
-            paths.forEach((path:{top: SkosSubject,stringPath: String[]})=>{
+            paths.forEach((path:{top: SkosResource,stringPath: String[]})=>{
                 let stringPath = (<String[]>[this.getLabel(path.top)]).concat(path.stringPath);
                 stringPath.forEach((s,index) => {
                     for (let i=0;i<index;i++){
@@ -102,11 +107,31 @@ export class SubjectHandler {
         });
     }
 
-    private getPaths(paths:{top: SkosSubject,stringPath: String[]}[]):{top: SkosSubject,stringPath: String[]}[]{
-        let result:{top: SkosSubject,stringPath: String[]}[] = [];
-        paths.forEach((path:{top: SkosSubject,stringPath: String[]})=>{
+    customIcons:CustomIconDefinition[]|undefined = vscode.workspace.getConfiguration().get("skos-ttl-editor.customIcons");
+    private addIcon(sss:{ [id: string] : SkosResource; }){
+        Object.keys(sss).forEach(key => {
+            sss[key].statements.forEach(statement => {
+                this.customIcons?.forEach(ci => {
+                    if ((!ci.rule.subject || ci.rule.subject === key)
+                        && (!ci.rule.predicate || ci.rule.predicate === statement.predicate.text)
+                        && (!ci.rule.object || ci.rule.object === statement.object.text)){
+                            if (ci.target === "subject"){
+                                sss[key].icon = ci.icon;
+                            }
+                            else if (ci.target === "object") {
+                                sss[statement.object.text].icon = ci.icon;
+                            }
+                        }     
+                });
+            });
+        });
+    }
+
+    private getPaths(paths:{top: SkosResource,stringPath: String[]}[]):{top: SkosResource,stringPath: String[]}[]{
+        let result:{top: SkosResource,stringPath: String[]}[] = [];
+        paths.forEach((path:{top: SkosResource,stringPath: String[]})=>{
             if (path.top.parents.length > 0){	
-                let newpaths:{top: SkosSubject,stringPath: String[]}[] = path.top.parents.map(p => { 
+                let newpaths:{top: SkosResource,stringPath: String[]}[] = path.top.parents.map(p => { 
                     return {
                         top:p,
                         stringPath:(<String[]>[this.getLabel(path.top)]).concat(path.stringPath)
@@ -120,12 +145,12 @@ export class SubjectHandler {
         });	
         return result;
     }   
-    mergeSkosSubjects(allSkosSubjects:{[id:string]:{ [id: string] : SkosSubject; }}, updateConcepts?:{
-                currentConcepts: { [id: string] : SkosSubject; },
+    mergeSkosSubjects(allSkosSubjects:{[id:string]:{ [id: string] : SkosResource; }}, updateConcepts?:{
+                currentConcepts: { [id: string] : SkosResource; },
                 conceptsToUpdate: string[]
             }
-        ):{ [id: string] : SkosSubject; }{
-        let sss:{ [id: string] : SkosSubject; }={};
+        ):{ [id: string] : SkosResource; }{
+        let sss:{ [id: string] : SkosResource; }={};
         Object.keys(allSkosSubjects).forEach(filename => {
             Object.keys(allSkosSubjects[filename]).forEach(subjectname => {
                 if (updateConcepts && !updateConcepts.conceptsToUpdate.includes(subjectname) && Object.keys(updateConcepts.currentConcepts).includes(subjectname)){
@@ -151,15 +176,15 @@ export class SubjectHandler {
         return sss;
     }
 
-    getSubTree(s:SkosSubject):SkosSubject[]{
-        let result:SkosSubject[] = [s];
+    getSubTree(s:SkosResource):SkosResource[]{
+        let result:SkosResource[] = [s];
         s.children.forEach(c => {
             result = result.concat(this.getSubTree(c));
         });
         return result;
     }
 
-    getLabel(s:SkosSubject):string{
+    getLabel(s:SkosResource):string{
         let englishLabels = getStatementsByPredicate(iridefs.prefLabel,s).filter(x => x.object.lang==="en");
         if (englishLabels.length === 0 || !englishLabels[0].object.literal){
             return s.concept.text;
@@ -168,29 +193,36 @@ export class SubjectHandler {
         }
     }
 
-    getStatementsWithObjectReference(s:SkosSubject):LocatedPredicateObject[]{
+    getStatementsWithObjectReference(s:SkosResource):LocatedPredicateObject[]{
         return s.statements.filter(x => !x.object.literal);
     }
     
-    getStatementsWithHierarchyReference(s:SkosSubject):LocatedPredicateObject[]{
+    getStatementsWithHierarchyReference(s:SkosResource):LocatedPredicateObject[]{
         let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept];
         return s.statements.filter(x => hierarchyReferences.includes(x.predicate.text));
     }
 }
 
-export function getStatementsByPredicate(predicate:string,s:SkosSubject):LocatedPredicateObject[]{
-    return s.statements.filter(x => x.predicate.text===predicate);
+export function getStatementsByPredicate(predicate:string|string[],s:SkosResource):LocatedPredicateObject[]{
+    return s.statements.filter(x => {
+        if (typeof predicate === "string") {
+            return x.predicate.text===predicate;
+        }
+        else if (predicate instanceof Array){
+            return predicate.includes(x.predicate.text);
+        }
+    });
 }
 
-export function getObjectValuesByPredicate(predicate:string,s:SkosSubject):string[]{
+export function getObjectValuesByPredicate(predicate:string|string[],s:SkosResource):string[]{
     return getStatementsByPredicate(predicate,s).map(x => x.object.text);
 }
 
-export interface SkosSubject {
+export interface SkosResource {
     concept:LocatedSubject;
     statements:LocatedPredicateObject[];
-	children:SkosSubject[];
-	parents:SkosSubject[];
+	children:SkosResource[];
+	parents:SkosResource[];
 	virtual?:boolean;
 	description:vscode.MarkdownString;
 	treeviewNodes:SkosNode[];
@@ -198,4 +230,15 @@ export interface SkosSubject {
 		location:vscode.Location,
 		statement:string
     }[];
+    icon?:string;
+}
+
+interface CustomIconDefinition {
+	rule: {
+		subject?: string;								
+		predicate?: string;
+		object?: string;
+	};
+	icon: string;
+	target: "subject"|"object";
 }

@@ -3,7 +3,7 @@ import { SkosOutlineProvider } from './outline';
 import { SkosNode } from './skosnode';
 import * as parser from './parser';
 import { SkosParser, iridefs } from './parser';
-import { SkosSubject, SubjectHandler, getObjectValuesByPredicate } from './subjecthandler';
+import { SkosResource, SubjectHandler, getObjectValuesByPredicate } from './subjecthandler';
 import { DocumentHandler } from './documenthandler';
 import { SemanticHandler } from './semantichandler';
 
@@ -13,8 +13,8 @@ let skosParser = new SkosParser(subjectHandler);
 let documentHandler = new DocumentHandler(subjectHandler);
 
 export function activate(context: vscode.ExtensionContext) {
-	let allSkosSubjects: { [id: string] : { [id: string] : SkosSubject; }} = {};
-	const mergedSkosSubjects: { [id: string] : SkosSubject; } = {};
+	let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
+	const mergedSkosSubjects: { [id: string] : SkosResource; } = {};
 	const skosOutlineProvider = new SkosOutlineProvider(context);
 
 	vscode.commands.registerCommand('skos-ttl-editor.addConcept', (node:SkosNode) => {
@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext) {
 			}
 			let numberOfLoadedTextDocuments = 0;
 			let updateConcepts:{
-                currentConcepts: { [id: string] : SkosSubject; },
+                currentConcepts: { [id: string] : SkosResource; },
                 conceptsToUpdate: string[]
             } = { currentConcepts: mergedSkosSubjects, conceptsToUpdate: []};
 			documents.forEach((document:vscode.TextDocument|Thenable<vscode.TextDocument>|undefined) =>  {
@@ -154,11 +154,11 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	function getConceptsAtRange(document:vscode.TextDocument, range:vscode.Range):SkosSubject[]{
+	function getConceptsAtRange(document:vscode.TextDocument, range:vscode.Range):SkosResource[]{
 		let lineFrom = range.start.line;
 		let lineTo = range.end.line;
 		let keys = Object.keys(mergedSkosSubjects);
-		let concepts:SkosSubject[]=[];
+		let concepts:SkosResource[]=[];
 		for (let i = 0; i < keys.length; i++) {
 			let key = keys[i];
 			let locations = mergedSkosSubjects[key].occurances.map(o => o.location);
@@ -229,8 +229,8 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; }){
+	private sss:{ [id: string] : SkosResource; }={};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
 	}
 	provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.SymbolInformation[] | vscode.DocumentSymbol[]> {
@@ -253,8 +253,8 @@ class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 }
 
 class ConceptDefinitionProvider implements vscode.DefinitionProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; }){
+	private sss:{ [id: string] : SkosResource; }={};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
 	}
 	provideDefinition(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {		
@@ -273,8 +273,8 @@ class ConceptDefinitionProvider implements vscode.DefinitionProvider {
 }
 
 class ConceptReferenceProvider implements vscode.ReferenceProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; }){
+	private sss:{ [id: string] : SkosResource; }={};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
 	}	
 	provideReferences(document: vscode.TextDocument, position: vscode.Position, context: vscode.ReferenceContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {
@@ -289,8 +289,8 @@ class ConceptReferenceProvider implements vscode.ReferenceProvider {
 }
 
 class ConceptImplementationProvider implements vscode.ImplementationProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; }){
+	private sss:{ [id: string] : SkosResource; }={};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
 	}	
 	provideImplementation(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {
@@ -302,8 +302,8 @@ class ConceptImplementationProvider implements vscode.ImplementationProvider {
 }
 
 class ConceptHoverProvider implements vscode.HoverProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; }){
+	private sss:{ [id: string] : SkosResource; }={};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
 	}
     public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):vscode.Hover {
@@ -318,10 +318,10 @@ class ConceptHoverProvider implements vscode.HoverProvider {
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
-	private sss:{ [id: string] : SkosSubject; }={};
+	private sss:{ [id: string] : SkosResource; }={};
 	private customAutoCompletePredicates: { [id: string] : string[]; }={};
 	private customAutoCompleteObjects: { [id: string] : string[]; }={};
-	public constructor(sss:{ [id: string] : SkosSubject; },customAutoCompletePredicates:{}={},customAutoCompleteObjects:{}={}){
+	public constructor(sss:{ [id: string] : SkosResource; },customAutoCompletePredicates:{}={},customAutoCompleteObjects:{}={}){
 		this.sss = sss;
 		this.customAutoCompletePredicates = customAutoCompletePredicates;
 		this.customAutoCompleteObjects = customAutoCompleteObjects;
@@ -376,15 +376,15 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 	}
 }
 
-function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [id: string] : SkosSubject; } ){	
-	let topsss: SkosSubject[]=[];
+function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [id: string] : SkosResource; } ){	
+	let topsss: SkosResource[]=[];
 	Object.keys(sss).forEach(key => {
 		if (sss[key].parents.filter(p => !getObjectValuesByPredicate(iridefs.type,p).includes(iridefs.conceptScheme)).length===0){
 			topsss.push(sss[key]);
 		}
 	});
 	let topnodes:SkosNode[]=[];
-	function addSkosNodes(m:SkosSubject,node:SkosNode,scheme?:string){
+	function addSkosNodes(m:SkosResource,node:SkosNode,scheme?:string){
 		let childnodes:SkosNode[]=[];
 		m.children.forEach(c => {
 			if (scheme && !getObjectValuesByPredicate(iridefs.inScheme,c).includes(scheme)){return;}
@@ -397,7 +397,7 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 			children:childnodes,
 			label:subjectHandler.getLabel(m),
 			notations:getObjectValuesByPredicate(iridefs.notation,m),
-			iconname: getIconName(m),
+			iconname: m.icon,
 			occurances: m.occurances,
 			types: getObjectValuesByPredicate(iridefs.type,m)
 		});
@@ -422,22 +422,6 @@ function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [i
 		}
 	});
 	skosOutlineProvider.setTree(topnodes);
-}
-
-let customIcons:[{rule:string,icon:string}]|undefined = vscode.workspace.getConfiguration().get("skos-ttl-editor.customIcons");
-
-function getIconName(m: SkosSubject):string|undefined{
-	let result:string|undefined;
-	customIcons?.forEach(x => {
-		m.occurances.map(o => o.statement).forEach(s => {
-			if (s.replace(/[\r\n\s]+/g," ").indexOf(x.rule) > -1) {
-				if (result === undefined){
-					result = x.icon;
-				}
-			}
-		});
-	});
-	return result;
 }
 
 function selectTextSnippet(node:SkosNode){

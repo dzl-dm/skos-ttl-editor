@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkosSubject, getStatementsByPredicate } from './subjecthandler';
+import { SkosResource, getStatementsByPredicate } from './subjecthandler';
 import { iridefs, IRIREF } from './parser';
 
 export class SemanticHandler {
@@ -26,7 +26,7 @@ export class SemanticHandler {
         });
     }
 
-    checkSemantics(mergedSkosSubjects: { [id: string]: SkosSubject; }){
+    checkSemantics(mergedSkosSubjects: { [id: string]: SkosResource; }){
         Object.keys(mergedSkosSubjects).forEach(key => {
             let s = mergedSkosSubjects[key];
             let probablySkosResource = s.statements.filter(statement => statement.predicate.text.startsWith(iridefs.skosBase.substring(0,iridefs.skosBase.length-1))).length > 0;

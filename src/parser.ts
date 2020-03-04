@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkosSubject, SubjectHandler } from './subjecthandler';
+import { SkosResource, SubjectHandler } from './subjecthandler';
 
 export class SkosParser {
     subjectHandler:SubjectHandler;
@@ -7,7 +7,7 @@ export class SkosParser {
         this.subjectHandler=subjectHandler;
     }
 
-    parseTextDocument(document:vscode.TextDocument|undefined): { [id: string] : SkosSubject; }|undefined {
+    parseTextDocument(document:vscode.TextDocument|undefined): { [id: string] : SkosResource; }|undefined {
         if (!document){
             return undefined;
         }
@@ -117,8 +117,8 @@ export class SkosParser {
         }
     }
     
-    private appendSSS(document:vscode.TextDocument,sms:LocatedText[],prefixes:Prefix[]):{ [id: string] : SkosSubject; }{
-        let sss:{ [id: string] : SkosSubject; } = {};
+    private appendSSS(document:vscode.TextDocument,sms:LocatedText[],prefixes:Prefix[]):{ [id: string] : SkosResource; }{
+        let sss:{ [id: string] : SkosResource; } = {};
         sms.forEach(sm => {
             let match = sm.text;
             let r_subject = new RegExp(subject_named,"g"), match_subject, s;
