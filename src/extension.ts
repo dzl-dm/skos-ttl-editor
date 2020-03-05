@@ -304,6 +304,7 @@ class ConceptHoverProvider implements vscode.HoverProvider {
 	}
     public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):vscode.Hover {
 		let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
+		hoveredIri = skosParser.resolve(hoveredIri,document) || hoveredIri;
 		let items = Object.keys(this.sss).filter(i => i===hoveredIri);
 		if (items.length>0) {
 			return new vscode.Hover(this.sss[items[0]].description);
@@ -359,11 +360,15 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 				"altLabel","member","editorialNote","Concept","ConceptScheme",
 				"inScheme","hasTopConcept","topConceptOf","Collection","related"].sort().map(prop => new vscode.CompletionItem(prop,vscode.CompletionItemKind.Property)));
 		} 
-		let prefix = triggerWord.substring(0,triggerWord.indexOf(":")+1);
+		let prefix = skosParser.getPrefixes(document).filter(p => p.short === triggerWord.substring(0,triggerWord.indexOf(":")+1))[0];
+		let iriref = skosParser.getPrefixes(document).filter(p => p.short === triggerWord.substring(0,triggerWord.indexOf(":")+1))[0]?.long;
+		iriref = iriref.substring(0,iriref.length-1);
 		result = result.concat(Object.keys(this.sss)
-			.filter(c => c.startsWith(prefix))
+			.filter(c => c.startsWith(iriref))
 			.map(c => {
-				let ci = new vscode.CompletionItem(c.substr(prefix.length),vscode.CompletionItemKind.Reference);
+				let name = c.replace(iriref,"");
+				name = name.substring(0,name.length-1);
+				let ci = new vscode.CompletionItem(name,vscode.CompletionItemKind.Reference);
 				ci.documentation = this.sss[c].description;
 				return ci;
 			})

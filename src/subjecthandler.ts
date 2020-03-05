@@ -45,21 +45,23 @@ export class SubjectHandler {
             let ti = sss[key];
             getStatementsByPredicate(predicatesBroader,ti).forEach(b => {
                 if (Object.keys(sss).includes(b.object.text)){
-                    if (sss[b.object.text].children.filter(x => x.concept === ti.concept).length === 0) {
-                        sss[b.object.text].children.push(ti);
+                    let broaderti = sss[b.object.text];
+                    if (!broaderti.children.includes(ti) && !ti.children.includes(broaderti)) {
+                        broaderti.children.push(ti);
                     }
-                    if (ti.parents.filter(x => x.concept === sss[b.object.text].concept).length === 0) {
-                        ti.parents.push(sss[b.object.text]);
+                    if (!ti.parents.includes(broaderti) && !broaderti.parents.includes(ti)) {
+                        ti.parents.push(broaderti);
                     }
                 }
             });
             getStatementsByPredicate(predicatesNarrower,ti).forEach(n => {
                 if (Object.keys(sss).includes(n.object.text)){
-                    if (sss[n.object.text].parents.filter(x => x.concept === ti.concept).length === 0) {
-                        sss[n.object.text].parents.push(ti);
+                    let narrowerti = sss[n.object.text];
+                    if (!narrowerti.parents.includes(ti) && !ti.parents.includes(narrowerti)) {
+                        narrowerti.parents.push(ti);
                     }
-                    if (ti.children.filter(x => x.concept === sss[n.object.text].concept).length === 0) {
-                        ti.children.push(sss[n.object.text]);
+                    if (!ti.children.includes(narrowerti) && !narrowerti.children.includes(ti)) {
+                        ti.children.push(narrowerti);
                     }
                 }
             });
@@ -100,10 +102,10 @@ export class SubjectHandler {
             });		
             item.description.appendMarkdown(pathMarkdown);
     
-            item.occurances.forEach((occ,index)=>{
+            /*item.occurances.forEach((occ,index)=>{
                 item.description.appendMarkdown("\n---\n"+occ.location.uri.fsPath.substr(occ.location.uri.fsPath.lastIndexOf("\\")+1) + ": Lines " + (occ.location.range.start.line+1) + " - " + (occ.location.range.end.line+1));
                 item.description.appendCodeblock(occ.statement);
-            });
+            });*/
         });
     }
 

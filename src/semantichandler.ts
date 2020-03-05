@@ -51,7 +51,7 @@ export class SemanticHandler {
             if (probablySkosResource) {
                 let labels = getStatementsByPredicate(iridefs.prefLabel,s);
                 labels.map(l => l.object.lang).filter((value,index,array)=>array.indexOf(value)===index).forEach(lang => {
-                    let langMatchingLabels = labels.filter(l => l.object.lang === lang);
+                    let langMatchingLabels = labels.filter(l => l.object.lang === lang).filter((value,index,self)=>self.map(s => s.object.text).indexOf(value.object.text)===index);
                     if (langMatchingLabels.length > 1) {
                         langMatchingLabels.forEach(label => {
                             this.addDiagnostic(label.object.location,vscode.DiagnosticSeverity.Error,"The 'skos:prefLabel' for this resource and language '"+lang+"' has been declared more than once.");
@@ -79,6 +79,40 @@ export class SemanticHandler {
                 if (!s.object.literal && !regex.exec(s.object.text)){
                     this.addDiagnostic(s.object.location,vscode.DiagnosticSeverity.Error,"Prefix not found for '"+s.object.text+"'.");
                 }
+            });
+
+            //duplicate check
+            let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).indexOf(value.predicate.text + " " + value.object.text) !== index);
+            duplicates.forEach(d => {
+                this.addDiagnostic(d.location,vscode.DiagnosticSeverity.Information,"Duplicate entry.");
+            });
+
+            //recursion check
+            let customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
+            let customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
+            let predicatesNarrower = [ iridefs.narrower, iridefs.member ].concat(customHierarchicalReferencePredicatesNarrower);
+            let predicatesBroader = [ iridefs.broader, iridefs.inScheme ].concat(customHierarchicalReferencePredicatesBroader);
+            getStatementsByPredicate(predicatesBroader,s).forEach(b => {
+                let broaterSkosResource = mergedSkosSubjects[b.object.text];
+                getStatementsByPredicate(predicatesBroader,broaterSkosResource).forEach(x => {
+                    if (x.object.text === s.concept.text){
+                        this.addDiagnostic(x.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");
+                    }
+                });
+                getStatementsByPredicate(predicatesNarrower,s).forEach(x => {
+                    if (x.object.text === b.object.text){
+                        this.addDiagnostic(b.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");
+                        this.addDiagnostic(x.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");
+                    }
+                });
+            });
+            getStatementsByPredicate(predicatesNarrower,s).forEach(n => {
+                let narrowerSkosResource = mergedSkosSubjects[n.object.text];
+                getStatementsByPredicate(predicatesNarrower,narrowerSkosResource).forEach(x => {
+                    if (x.object.text === s.concept.text){
+                        this.addDiagnostic(x.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");
+                    }
+                });
             });
         });
     }
