@@ -10,14 +10,20 @@
 	"categories": [
 		"Other"
 	],
+	"keywords": ["SKOS","Turtle","Thesaurus"],
+	"markdown": "github",
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/dzl-dm/skos-ttl-editor.git"
 	},
-	"languages": [{
-		"id": "turtle",
-		"extensions": [".ttl"]
-	}],
+	"languages": [
+		{
+			"id": "turtle",
+			"extensions": [
+				".ttl"
+			]
+		}
+	],
 	"activationEvents": [
 		"onLanguage:turtle",
 		"onCommand:skos-ttl-editor.startMarkdown"
@@ -41,16 +47,16 @@
 				"command": "skos-ttl-editor.complementFiles",
 				"title": "Load all files in workspace",
 				"icon": {
-				  "light": "resources/light/add_documents.svg",
-				  "dark": "resources/dark/add_folder.svg"
+					"light": "resources/light/add_documents.svg",
+					"dark": "resources/dark/add_folder.svg"
 				}
 			},
 			{
 				"command": "skos-ttl-editor.reload",
 				"title": "Load only current file",
 				"icon": {
-				  "light": "resources/light/refresh.svg",
-				  "dark": "resources/dark/refresh.svg"
+					"light": "resources/light/refresh.svg",
+					"dark": "resources/dark/refresh.svg"
 				}
 			}
 		],
@@ -81,25 +87,45 @@
 					"group": "navigation"
 				}
 			]
-		},		
-		"configuration":{
+		},
+		"configuration": {
 			"title": "SKOS Turtle Editor",
 			"properties": {
-				"skos-ttl-editor.customAutoCompletePredicates": {
+				"skos-ttl-editor.customAutoCompletePrefixedPredicates": {
 					"type": "object",
 					"default": {
-						"prov:": ["wasDerivedFrom"],
-						"rdf:": ["hasPart","partOf"],
-						"dc:": ["description"],
-						"dwh:": ["restriction"],
-						":": ["unit","status","displayLabel"]
+						"<http://www.w3.org/ns/prov#>": [
+							"wasDerivedFrom"
+						],
+						"<http://www.w3.org/1999/02/22-rdf-syntax-ns#>": [
+							"hasPart",
+							"partOf"
+						],
+						"<http://purl.org/dc/elements/1.1/>": [
+							"description"
+						],
+						"<http://sekmi.de/histream/dwh#>": [
+							"restriction"
+						],
+						"<http://data.dzl.de/ont/dwh#>": [
+							"unit",
+							"status",
+							"displayLabel"
+						]
 					},
 					"description": "Defines custom autocomplete predicates."
 				},
 				"skos-ttl-editor.customAutoCompleteObjects": {
 					"type": "object",
 					"default": {
-						"dwh:": ["integerRestriction","stringRestriction","largeStringRestriction","floatRestriction","partialDateRestriction","dateRestriction"]
+						"<http://sekmi.de/histream/dwh#>": [
+							"integerRestriction",
+							"stringRestriction",
+							"largeStringRestriction",
+							"floatRestriction",
+							"partialDateRestriction",
+							"dateRestriction"
+						]
 					},
 					"description": "Defines custom autocomplete objects."
 				},
@@ -107,7 +133,7 @@
 					"type": "object",
 					"default": [
 						{
-							"rule": {								
+							"rule": {
 								"predicate": "<http://sekmi.de/histream/dwh#restriction>",
 								"object": "<http://sekmi.de/histream/dwh#integerRestriction>"
 							},
@@ -115,7 +141,7 @@
 							"target": "subject"
 						},
 						{
-							"rule": {								
+							"rule": {
 								"predicate": "<http://sekmi.de/histream/dwh#restriction>",
 								"object": "<http://sekmi.de/histream/dwh#floatRestriction>"
 							},
@@ -123,14 +149,14 @@
 							"target": "subject"
 						},
 						{
-							"rule": {								
+							"rule": {
 								"predicate": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#partOf>"
 							},
 							"icon": "puzzle",
 							"target": "subject"
 						},
 						{
-							"rule": {								
+							"rule": {
 								"predicate": "<http://www.w3.org/1999/02/22-rdf-syntax-ns#hasPart>"
 							},
 							"icon": "puzzle",
@@ -141,31 +167,35 @@
 				},
 				"skos-ttl-editor.customHierarchicalReferencePredicatesNarrower": {
 					"type": "array",
-					"default": [ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#hasPart>" ],
+					"default": [
+						"<http://www.w3.org/1999/02/22-rdf-syntax-ns#hasPart>"
+					],
 					"description": "List of narrower-like hierarchical references."
 				},
 				"skos-ttl-editor.customHierarchicalReferencePredicatesBroader": {
 					"type": "array",
-					"default": [ "<http://www.w3.org/1999/02/22-rdf-syntax-ns#partOf>" ],
+					"default": [
+						"<http://www.w3.org/1999/02/22-rdf-syntax-ns#partOf>"
+					],
 					"description": "List of broader-like hierarchical references."
 				}
 			}
 		},
 		"views": {
-            "skos-explorer": [
-                {
-                    "id": "skosOutline",
-                    "name": "Skos Outline"
+			"skos-explorer": [
+				{
+					"id": "skosOutline",
+					"name": "Skos Outline"
 				}
-            ]
+			]
 		},
 		"viewsContainers": {
 			"activitybar": [
-			  {
-				"id": "skos-explorer",
-				"title": "Skos Explorer",
-				"icon": "media/skos2.svg"
-			  }
+				{
+					"id": "skos-explorer",
+					"title": "Skos Explorer",
+					"icon": "media/skos2.svg"
+				}
 			]
 		}
 	},
@@ -183,8 +213,8 @@
 		"@types/vscode": "^1.40.0",
 		"glob": "^7.1.5",
 		"mocha": "^6.2.2",
-		"typescript": "^3.6.4",
 		"tslint": "^5.20.0",
+		"typescript": "^3.8.3",
 		"vscode-test": "^1.2.2"
 	}
 }

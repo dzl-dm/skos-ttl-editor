@@ -7,6 +7,8 @@ export class SkosParser {
         this.subjectHandler=subjectHandler;
     }
 
+    prefixes:{[id:string]:Prefix[]}={};
+
     parseTextDocument(document:vscode.TextDocument|undefined): { [id: string] : SkosResource; }|undefined {
         if (!document){
             return undefined;
@@ -24,12 +26,44 @@ export class SkosParser {
             return undefined;
         }*/
     
-        let prefixes = this.getPrefixes(resttext);
+        let prefixes = this.setPrefixes(document,resttext);
         let statements = this.getStatements(document,resttext);
-        return this.appendSSS(document,statements,prefixes);
+        return this.appendSSS(document,statements);
+    }
+
+    getPrefixes(document:vscode.TextDocument):Prefix[];
+    getPrefixes(uri:vscode.Uri):Prefix[];
+    getPrefixes(fsPath:string):Prefix[];
+    getPrefixes(arg:any):Prefix[]{
+        if (typeof arg === "string"){
+            return this.prefixes[arg];
+        }
+        else if ((arg as vscode.Uri).fsPath){
+            return this.prefixes[(arg as vscode.Uri).fsPath];
+        }
+        else if ((arg as vscode.TextDocument).uri){
+            return this.prefixes[(arg as vscode.TextDocument).uri.fsPath];
+        }
+        return [];
+    }
+
+    getPrefix(iriref:string,document:vscode.TextDocument):string;
+    getPrefix(iriref:string,uri:vscode.Uri):string;
+    getPrefix(iriref:string,fsPath:string):string;
+    getPrefix(iriref:string,arg:any):string{
+        let prefix = this.getPrefixes(arg).filter(p => p.long === iriref);
+        return prefix[0]?.short;
+    }
+
+    getSkosPrefix(document:vscode.TextDocument):string;
+    getSkosPrefix(uri:vscode.Uri):string;
+    getSkosPrefix(fsPath:string):string;
+    getSkosPrefix(arg:any):string{
+        let prefix = this.getPrefixes(arg).filter(p => p.long === iridefs.skosBase);
+        return prefix[0]?.short;
     }
     
-    getPrefixes(s:string):Prefix[]{
+    setPrefixes(document:vscode.TextDocument,s:string){
         let match:RegExpExecArray|null;
         let result:Prefix[]=[];
         let prefix_match = new RegExp(prefixID,"g");
@@ -41,7 +75,7 @@ export class SkosParser {
                 });
             }
         }
-        return result;
+        this.prefixes[document.uri.fsPath] = result;
     }
 
     private getStatements(document:vscode.TextDocument,s:string):LocatedText[]{
@@ -103,7 +137,7 @@ export class SkosParser {
     resolve(iri:string,arg:any):string|undefined{
         let prefixes:Prefix[] = [];
         if ((arg as vscode.TextDocument).uri) {
-            prefixes = this.getPrefixes((arg as vscode.TextDocument).getText());
+            prefixes = this.prefixes[(arg as vscode.TextDocument).uri.fsPath];
         }
         else {
             prefixes = arg;
@@ -117,8 +151,9 @@ export class SkosParser {
         }
     }
     
-    private appendSSS(document:vscode.TextDocument,sms:LocatedText[],prefixes:Prefix[]):{ [id: string] : SkosResource; }{
+    private appendSSS(document:vscode.TextDocument,sms:LocatedText[]):{ [id: string] : SkosResource; }{
         let sss:{ [id: string] : SkosResource; } = {};
+        let prefixes = this.prefixes[document.uri.fsPath];
         sms.forEach(sm => {
             let match = sm.text;
             let r_subject = new RegExp(subject_named,"g"), match_subject, s;

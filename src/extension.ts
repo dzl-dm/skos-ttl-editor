@@ -182,11 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
 			'turtle', 
-			new CompletionItemProvider(
-				mergedSkosSubjects,
-				vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompletePredicates"),
-				vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompleteObjects")
-			), 
+			new CompletionItemProvider(mergedSkosSubjects), 
 			':',' ')
 		);
 	context.subscriptions.push(
@@ -319,15 +315,13 @@ class ConceptHoverProvider implements vscode.HoverProvider {
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
 	private sss:{ [id: string] : SkosResource; }={};
-	private customAutoCompletePredicates: { [id: string] : string[]; }={};
-	private customAutoCompleteObjects: { [id: string] : string[]; }={};
-	public constructor(sss:{ [id: string] : SkosResource; },customAutoCompletePredicates:{}={},customAutoCompleteObjects:{}={}){
+	private customAutoCompletePrefixedPredicates: { [id: string] : string[]; }=vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompletePrefixedPredicates")||{};
+	private customAutoCompletePrefixedObjects: { [id: string] : string[]; }=vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompletePrefixedObjects")||{};
+	public constructor(sss:{ [id: string] : SkosResource; }){
 		this.sss = sss;
-		this.customAutoCompletePredicates = customAutoCompletePredicates;
-		this.customAutoCompleteObjects = customAutoCompleteObjects;
 	}
     public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext):vscode.CompletionItem[] {
-		let objectrange = document.getWordRangeAtPosition(position,new RegExp("skos:(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
+		let objectrange = document.getWordRangeAtPosition(position,new RegExp(skosParser.getSkosPrefix(document)+"(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
 		if (objectrange) {
 			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
 				let ci = new vscode.CompletionItem(subjectHandler.getLabel(ss),vscode.CompletionItemKind.Property);
@@ -344,21 +338,23 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		if (triggerWord === ""){
 			return result;
 		} 
-		if (Object.keys(this.customAutoCompletePredicates).includes(triggerWord)) {
-			result = result.concat(this.customAutoCompletePredicates[triggerWord].sort().map(prop => {
+		let predicateIriref = Object.keys(this.customAutoCompletePrefixedPredicates).filter(key => skosParser.getPrefix(key,document)===triggerWord)[0];
+		if (predicateIriref) {
+			result = result.concat(this.customAutoCompletePrefixedPredicates[predicateIriref].sort().map(prop => {
 				let ci = new vscode.CompletionItem(prop,vscode.CompletionItemKind.Property);
 				ci.sortText = "__"+prop;
 				return ci;
 			}));
 		} 
-		if (Object.keys(this.customAutoCompleteObjects).includes(triggerWord)) {
-			result = result.concat(this.customAutoCompleteObjects[triggerWord].sort().map(prop => {
+		let objectIriref = Object.keys(this.customAutoCompletePrefixedObjects).filter(key => skosParser.getPrefix(key,document)===triggerWord)[0];
+		if (objectIriref) {
+			result = result.concat(this.customAutoCompletePrefixedObjects[objectIriref].sort().map(prop => {
 				let ci = new vscode.CompletionItem(prop,vscode.CompletionItemKind.Constant);
 				ci.sortText = "__"+prop;
 				return ci;
 			}));
 		} 
-		if (triggerWord === "skos:") {
+		if (triggerWord === skosParser.getSkosPrefix(document)) {
 			result = result.concat(["broader","narrower","notation","prefLabel",
 				"altLabel","member","editorialNote","Concept","ConceptScheme",
 				"inScheme","hasTopConcept","topConceptOf","Collection","related"].sort().map(prop => new vscode.CompletionItem(prop,vscode.CompletionItemKind.Property)));
