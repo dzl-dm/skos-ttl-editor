@@ -10,7 +10,7 @@ import { SemanticHandler } from './semantichandler';
 let semanticHandler = new SemanticHandler();
 let subjectHandler = new SubjectHandler();
 let skosParser = new SkosParser(subjectHandler);
-let documentHandler = new DocumentHandler(subjectHandler);
+let documentHandler = new DocumentHandler(subjectHandler,skosParser);
 
 export function activate(context: vscode.ExtensionContext) {
 	let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
@@ -18,10 +18,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const skosOutlineProvider = new SkosOutlineProvider(context);
 
 	vscode.commands.registerCommand('skos-ttl-editor.addConcept', (node:SkosNode) => {
-		let text = ":NEWCONCEPT"+Date.now()+" a skos:Concept ;\n";
-		text += "\tskos:broader "+node.getConcept()+" ;\n";
-		text += "\tskos:prefLabel \"New Concept\"@en ;\n";
-		text += ".";
+		let text = "${1::NEWCONCEPT"+Date.now()+"} a skos:Concept ;\n";
+		text += "\t"+iridefs.broader+" "+node.getConcept()+" ;\n";
+		text += "\t"+iridefs.prefLabel+" \"${2:prefered label}\"@en ;\n";
 		documentHandler.insertText(mergedSkosSubjects[node.getConcept()],text,"after").then(()=>{
 			vscode.window.showInformationMessage("Added concept \""+node.getLabel()+"\" to concept \""+node.getLabel()+"\".");
 		});
@@ -275,7 +274,7 @@ class ConceptReferenceProvider implements vscode.ReferenceProvider {
 	}	
 	provideReferences(document: vscode.TextDocument, position: vscode.Position, context: vscode.ReferenceContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {
 		let referenceIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		referenceIri = skosParser.resolve(referenceIri,document) || referenceIri;
+		referenceIri = skosParser.resolvePrefix(referenceIri,document) || referenceIri;
 		let locations = Object.keys(this.sss).map(key => this.sss[key].statements)
 			.reduce((prev,curr,index) => prev = prev.concat(curr),[])
 			.filter(s =>  s.object.text === referenceIri)
@@ -291,7 +290,7 @@ class ConceptImplementationProvider implements vscode.ImplementationProvider {
 	}	
 	provideImplementation(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {
 		let implementationIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		implementationIri = skosParser.resolve(implementationIri,document) || implementationIri;
+		implementationIri = skosParser.resolvePrefix(implementationIri,document) || implementationIri;
 		let items = Object.keys(this.sss).filter(i => i===implementationIri);
 		return this.sss[items[0]].occurances.map(o => o.location);
 	}
@@ -304,7 +303,7 @@ class ConceptHoverProvider implements vscode.HoverProvider {
 	}
     public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):vscode.Hover {
 		let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		hoveredIri = skosParser.resolve(hoveredIri,document) || hoveredIri;
+		hoveredIri = skosParser.resolvePrefix(hoveredIri,document) || hoveredIri;
 		let items = Object.keys(this.sss).filter(i => i===hoveredIri);
 		if (items.length>0) {
 			return new vscode.Hover(this.sss[items[0]].description);

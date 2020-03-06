@@ -46,10 +46,10 @@ export class SubjectHandler {
             getStatementsByPredicate(predicatesBroader,ti).forEach(b => {
                 if (Object.keys(sss).includes(b.object.text)){
                     let broaderti = sss[b.object.text];
-                    if (!broaderti.children.includes(ti) && !ti.children.includes(broaderti)) {
+                    if (!broaderti.children.includes(ti) && !ti.children.includes(broaderti) && broaderti !== ti) {
                         broaderti.children.push(ti);
                     }
-                    if (!ti.parents.includes(broaderti) && !broaderti.parents.includes(ti)) {
+                    if (!ti.parents.includes(broaderti) && !broaderti.parents.includes(ti) && broaderti !== ti) {
                         ti.parents.push(broaderti);
                     }
                 }
@@ -57,10 +57,10 @@ export class SubjectHandler {
             getStatementsByPredicate(predicatesNarrower,ti).forEach(n => {
                 if (Object.keys(sss).includes(n.object.text)){
                     let narrowerti = sss[n.object.text];
-                    if (!narrowerti.parents.includes(ti) && !ti.parents.includes(narrowerti)) {
+                    if (!narrowerti.parents.includes(ti) && !ti.parents.includes(narrowerti) && narrowerti !== ti) {
                         narrowerti.parents.push(ti);
                     }
-                    if (!ti.children.includes(narrowerti) && !narrowerti.children.includes(ti)) {
+                    if (!ti.children.includes(narrowerti) && !narrowerti.children.includes(ti) && narrowerti !== ti) {
                         ti.children.push(narrowerti);
                     }
                 }

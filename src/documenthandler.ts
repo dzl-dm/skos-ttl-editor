@@ -1,14 +1,17 @@
 import * as vscode from 'vscode';
 import { SkosResource, SubjectHandler } from './subjecthandler';
+import { SkosParser } from './parser';
 
 export class DocumentHandler { 
     subjectHandler:SubjectHandler;
-    constructor(subjectHandler:SubjectHandler){
+    parser:SkosParser;
+    constructor(subjectHandler:SubjectHandler,parser:SkosParser){
         this.subjectHandler=subjectHandler;
+        this.parser=parser;
     } 
     async insertText(sss:SkosResource[]|SkosResource, text:string, type:"append"|"after"):Promise<any>{
         return new Promise(async (resolve,reject)=>{
-            let concepts = (<SkosResource[]>(sss instanceof Array && sss || [sss])).sort((a,b)=>{
+            let concepts = (<SkosResource[]>(sss instanceof Array && sss || [sss])).filter(s => s.occurances.length > 0).sort((a,b)=>{
                 if (a.occurances[0].location.uri.fsPath > b.occurances[0].location.uri.fsPath) {
                     return -1;
                 }
@@ -57,15 +60,15 @@ export class DocumentHandler {
                     if (type==="append") {
                         return {
                             uri: l.uri,
-                            position: new vscode.Position(l.range.end.line,l.range.end.character-1),
+                            position: new vscode.Position(l.range.end.line,l.range.end.character),
                             textBefore: "",
                             textAfter: "\n"
                         };
                     } else if (type==="after") {
                         return {
                             uri: l.uri,
-                            position: new vscode.Position(l.range.end.line,l.range.end.character),
-                            textBefore: "\n\n",
+                            position: new vscode.Position(l.range.end.line, l.range.end.character),
+                            textBefore: ".\n\n",
                             textAfter: ""
                         };
                     } else {
@@ -83,11 +86,14 @@ export class DocumentHandler {
                     if (!doc){return;}
                     return this.showTextDocument(doc).then((editor)=>{
                         if (!editor){return;}
-                        return editor.edit(editBuilder => {
-                            inserts.filter(i => i.uri.fsPath === doc.uri.fsPath).forEach(i => {
-                                editBuilder.insert(i.position,i.textBefore+text+i.textAfter);
-                            });
+                        inserts.filter(i => i.uri.fsPath === doc.uri.fsPath).forEach(i => {
+                            editor.insertSnippet(new vscode.SnippetString(i.textBefore+this.parser.applyPrefixesOnText(text,doc)+i.textAfter),i.position);
                         });
+                        /*return editor.edit(editBuilder => {
+                            inserts.filter(i => i.uri.fsPath === doc.uri.fsPath).forEach(i => {
+                                editBuilder.insert(i.position,i.textBefore+this.parser.applyPrefixesOnText(text,doc)+i.textAfter);
+                            });
+                        });*/
                     });
                 });
             }

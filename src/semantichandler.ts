@@ -94,6 +94,9 @@ export class SemanticHandler {
             let predicatesBroader = [ iridefs.broader, iridefs.inScheme ].concat(customHierarchicalReferencePredicatesBroader);
             getStatementsByPredicate(predicatesBroader,s).forEach(b => {
                 let broaterSkosResource = mergedSkosSubjects[b.object.text];
+                if (broaterSkosResource === s){
+                    this.addDiagnostic(b.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");
+                }
                 getStatementsByPredicate(predicatesBroader,broaterSkosResource).forEach(x => {
                     if (x.object.text === s.concept.text){
                         this.addDiagnostic(x.location,vscode.DiagnosticSeverity.Error,"Recursive hierarchical relation.");

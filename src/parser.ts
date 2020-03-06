@@ -82,6 +82,7 @@ export class SkosParser {
         let result:LocatedText[]=[];
         let tempmatch;
         let triples_match = new RegExp(triples,"g");
+
         let locatedDocumentText:LocatedText = {
             location: new vscode.Location(
                 document.uri,
@@ -93,10 +94,21 @@ export class SkosParser {
             text:s
         };
         
-        while (tempmatch = triples_match.exec(s)){
+        while (tempmatch = triples_match.exec(s)){        
+            //extend statement location till next dot
+            let textBeforeDot = s.substring(tempmatch.index+tempmatch[0].length,s.indexOf(".",tempmatch.index+tempmatch[0].length));
+            let linesplit = textBeforeDot.split(/\r\n|\r|\n/);
+            let location = this.getLocationOfMatchWithinLocatedText(locatedDocumentText,tempmatch);
+            location = new vscode.Location(location.uri,new vscode.Range(
+                location.range.start,
+                new vscode.Position(
+                    location.range.end.line+linesplit.length-1,
+                    linesplit.length===1 ? location.range.end.character+linesplit[0].length : linesplit[linesplit.length-1].length
+                )
+            ));
             result.push({
-                location:this.getLocationOfMatchWithinLocatedText(locatedDocumentText,tempmatch),
-                text:tempmatch[0]
+                location:location,
+                text:document.getText(location.range)
             });
         }
         return result;
@@ -132,9 +144,9 @@ export class SkosParser {
         );
     }
 
-    resolve(iri:string,document:vscode.TextDocument):string|undefined;
-    resolve(iri:string,prefixes:Prefix[]):string|undefined;
-    resolve(iri:string,arg:any):string|undefined{
+    resolvePrefix(iri:string,document:vscode.TextDocument):string|undefined;
+    resolvePrefix(iri:string,prefixes:Prefix[]):string|undefined;
+    resolvePrefix(iri:string,arg:any):string|undefined{
         let prefixes:Prefix[] = [];
         if ((arg as vscode.TextDocument).uri) {
             prefixes = this.prefixes[(arg as vscode.TextDocument).uri.fsPath];
@@ -149,6 +161,38 @@ export class SkosParser {
             let end = iri.substr(prefix.short.length);
             return prefix.long.substr(0,prefix.long.length-1)+end+">";
         }
+    }
+
+    applyPrefix(iriref:string,document:vscode.TextDocument):string|undefined;
+    applyPrefix(iriref:string,prefixes:Prefix[]):string|undefined;
+    applyPrefix(iriref:string,arg:any):string|undefined{
+        let prefixes:Prefix[] = [];
+        if ((arg as vscode.TextDocument).uri) {
+            prefixes = this.prefixes[(arg as vscode.TextDocument).uri.fsPath];
+        }
+        else {
+            prefixes = arg;
+        }
+        let matchingPrefix = prefixes.filter(p => iriref.startsWith(p.long.substring(0,p.long.length-1)));
+        if (matchingPrefix.length>0){
+            let prefix = matchingPrefix[0];
+            let result = iriref.replace(prefix.long.substring(0,prefix.long.length-1),prefix.short);
+            return result.substr(0,result.length-1);
+        }
+    }
+
+    applyPrefixesOnText(text:string,document:vscode.TextDocument):string|undefined;
+    applyPrefixesOnText(text:string,prefixes:Prefix[]):string|undefined;
+    applyPrefixesOnText(text:string,arg:any):string|undefined{
+        let regex = new RegExp(IRIREF,"g");
+        let match;
+        let result = text;
+        while (match = regex.exec(text)){
+            let iriref = match[0];
+            let iri = this.applyPrefix(iriref,arg)||iriref;
+            result = result.replace(iriref,iri);
+        }
+        return result;
     }
     
     private appendSSS(document:vscode.TextDocument,sms:LocatedText[]):{ [id: string] : SkosResource; }{
@@ -169,7 +213,7 @@ export class SkosParser {
                 }
                 else {
                     s = match_subject.groups && match_subject.groups["subject"] || "";
-                    s = this.resolve(s,prefixes)||s;
+                    s = this.resolvePrefix(s,prefixes)||s;
                 }
     
                 if (!sss[s]){
@@ -207,11 +251,11 @@ export class SkosParser {
                             text: match_po[0],
                             predicate: {
                                 location: predicateLocation,
-                                text: this.resolve(p,prefixes)||p
+                                text: this.resolvePrefix(p,prefixes)||p
                             },
                             object: {
                                 location: objectLocation,
-                                text: this.resolve(o,prefixes)||o,
+                                text: this.resolvePrefix(o,prefixes)||o,
                                 lang: lang,
                                 literal: literal
                             }
