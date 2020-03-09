@@ -5,9 +5,12 @@ import { SkosParser } from './parser';
 export class DocumentHandler { 
     subjectHandler:SubjectHandler;
     parser:SkosParser;
-    constructor(subjectHandler:SubjectHandler,parser:SkosParser){
-        this.subjectHandler=subjectHandler;
-        this.parser=parser;
+    constructor(options:{
+        subjectHandler?:SubjectHandler,
+        parser?:SkosParser
+    }){
+        this.subjectHandler=options.subjectHandler || new SubjectHandler();
+        this.parser=options.parser || new SkosParser(this.subjectHandler);
     } 
     async insertText(sss:SkosResource[]|SkosResource, text:string, type:"append"|"after"):Promise<any>{
         return new Promise(async (resolve,reject)=>{
@@ -101,7 +104,7 @@ export class DocumentHandler {
         });
     }
 
-    private openTextDocument(uri:vscode.Uri):Thenable<vscode.TextDocument|undefined>{
+    openTextDocument(uri:vscode.Uri):Thenable<vscode.TextDocument|undefined>{
         let matchingDocs = vscode.window.visibleTextEditors.map(te => te.document).filter(d => d.uri.fsPath === uri.fsPath);
         let opening:Thenable<vscode.TextDocument|undefined> = Promise.resolve(matchingDocs[0]);
         if (matchingDocs.length === 0){

@@ -3,8 +3,8 @@ import { SkosResource, SubjectHandler } from './subjecthandler';
 
 export class SkosParser {
     subjectHandler:SubjectHandler;
-    constructor(subjectHandler:SubjectHandler){
-        this.subjectHandler=subjectHandler;
+    constructor(subjectHandler?:SubjectHandler){
+        this.subjectHandler=subjectHandler||new SubjectHandler();
     }
 
     prefixes:{[id:string]:Prefix[]}={};

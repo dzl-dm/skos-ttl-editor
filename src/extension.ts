@@ -10,7 +10,7 @@ import { SemanticHandler } from './semantichandler';
 let semanticHandler = new SemanticHandler();
 let subjectHandler = new SubjectHandler();
 let skosParser = new SkosParser(subjectHandler);
-let documentHandler = new DocumentHandler(subjectHandler,skosParser);
+let documentHandler = new DocumentHandler({subjectHandler,parser:skosParser});
 
 export function activate(context: vscode.ExtensionContext) {
 	let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};

@@ -1,0 +1,23 @@
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:	<http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:	<http://www.w3.org/2002/07/owl#> .
+@prefix dc:	<http://purl.org/dc/elements/1.1/> .
+@prefix skos: 	<http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd:	<http://www.w3.org/2001/XMLSchema#> .
+@prefix dwh:	<http://sekmi.de/histream/dwh#> .
+@prefix snomed: <http://purl.bioontology.org/ontology/SNOMEDCT/> .
+@prefix loinc: <http://loinc.org/owl#> .
+@prefix :	<http://data.dzl.de/ont/dwh#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix prov: 	<http://www.w3.org/ns/prov#> .
+
+
+:TestResource1 a skos:Concept ;
+	skos:prefLabel "Test Resource 1"@en ;
+.
+
+:TestResource11 a skos:Concept ;
+	dc:creator "GH" ;
+	skos:broader :TestResource1 ;
+	skos:prefLabel "Test Resource 1.1"@en ;
+.

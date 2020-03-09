@@ -10,7 +10,11 @@
 	"categories": [
 		"Other"
 	],
-	"keywords": ["SKOS","Turtle","Thesaurus"],
+	"keywords": [
+		"SKOS",
+		"Turtle",
+		"Thesaurus"
+	],
 	"markdown": "github",
 	"repository": {
 		"type": "git",
