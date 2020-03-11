@@ -17,7 +17,26 @@
 .
 
 :TestResource11 a skos:Concept ;
-	dc:creator "GH" ;
 	skos:broader :TestResource1 ;
 	skos:prefLabel "Test Resource 1.1"@en ;
+.
+
+:TestResource2 a skos:Concept ;
+	skos:prefLabel "Test Resource 2"@en ;
+.
+
+:TestResource21 a skos:Concept ;
+	skos:prefLabel "Test Resource 2.1"@en ;
+	skos:broader :TestResource2 ;
+.
+
+:TestResource211 a skos:Concept ;
+	skos:prefLabel "Test Resource 2.1.1"@en ;
+	skos:broader :TestResource21 ;
+.
+
+:TestResource2111 a skos:Concept ;
+	skos:prefLabel "Test Resource 2.1.1.1"@en ;
+	skos:broader :TestResource211 ;
+	skos:narrower :TestResource21 ;
 .

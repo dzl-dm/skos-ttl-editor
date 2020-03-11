@@ -50,7 +50,7 @@ export function activate(context: vscode.ExtensionContext) {
 				.map(s => s.concept.text)
 		).then(a => {
 			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
-			let concepts = subjectHandler.getSubTree(mergedSkosSubjects[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
+			let concepts = subjectHandler.getDescendants(mergedSkosSubjects[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
 			documentHandler.insertText(
 				concepts,
 				"\tskos:inScheme "+a+" ;",
