@@ -26,7 +26,7 @@ export class SkosParser {
             return undefined;
         }*/
     
-        let prefixes = this.setPrefixes(document,resttext);
+        this.setPrefixes(document,resttext);
         let statements = this.getStatements(document,resttext);
         return this.appendSSS(document,statements);
     }
@@ -108,7 +108,7 @@ export class SkosParser {
             ));
             result.push({
                 location:location,
-                text:document.getText(location.range)
+                text:tempmatch[0]
             });
         }
         return result;

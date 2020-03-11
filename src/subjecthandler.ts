@@ -39,8 +39,8 @@ export class SubjectHandler {
     private addHierarchyReferences(sss:{ [id: string] : SkosResource; }){	
         let customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
         let customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
-        let predicatesNarrower = [ iridefs.narrower, iridefs.member ].concat(customHierarchicalReferencePredicatesNarrower);
-        let predicatesBroader = [ iridefs.broader, iridefs.inScheme ].concat(customHierarchicalReferencePredicatesBroader);
+        let predicatesNarrower = [ iridefs.narrower, iridefs.member, iridefs.hasTopConcept ].concat(customHierarchicalReferencePredicatesNarrower);
+        let predicatesBroader = [ iridefs.broader, iridefs.topConceptOf ].concat(customHierarchicalReferencePredicatesBroader);
         Object.keys(sss).forEach(key => {
             let ti = sss[key];
             getStatementsByPredicate(predicatesBroader,ti).forEach(b => {
@@ -117,10 +117,10 @@ export class SubjectHandler {
                     if ((!ci.rule.subject || ci.rule.subject === key)
                         && (!ci.rule.predicate || ci.rule.predicate === statement.predicate.text)
                         && (!ci.rule.object || ci.rule.object === statement.object.text)){
-                            if (ci.target === "subject"){
+                            if (ci.target === "subject" && sss[key]){
                                 sss[key].icon = ci.icon;
                             }
-                            else if (ci.target === "object") {
+                            else if (ci.target === "object" && sss[statement.object.text]) {
                                 sss[statement.object.text].icon = ci.icon;
                             }
                         }     
@@ -208,7 +208,7 @@ export class SubjectHandler {
     }
     
     getStatementsWithHierarchyReference(s:SkosResource):LocatedPredicateObject[]{
-        let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept];
+        let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept,iridefs.inScheme];
         return s.statements.filter(x => hierarchyReferences.includes(x.predicate.text));
     }
 }

@@ -84,7 +84,7 @@ export class SemanticHandler {
             //duplicate check
             let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).indexOf(value.predicate.text + " " + value.object.text) !== index);
             duplicates.forEach(d => {
-                this.addDiagnostic(d.location,vscode.DiagnosticSeverity.Information,"Duplicate entry.");
+                this.addDiagnostic(d.location,vscode.DiagnosticSeverity.Information,"Duplicate entry '"+d.text+"'.");
             });
 
             //recursion check
@@ -107,7 +107,7 @@ export class SemanticHandler {
     customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
     customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
     predicatesNarrower = [ iridefs.narrower, iridefs.member, iridefs.hasTopConcept ].concat(this.customHierarchicalReferencePredicatesNarrower);
-    predicatesBroader = [ iridefs.broader, iridefs.inScheme, iridefs.topConceptOf ].concat(this.customHierarchicalReferencePredicatesBroader);
+    predicatesBroader = [ iridefs.broader, iridefs.topConceptOf ].concat(this.customHierarchicalReferencePredicatesBroader);
 
     getBroaderResourcesByStatements(s:SkosResource,mergedSkosSubjects: { [id: string]: SkosResource; }):{resource:SkosResource,statement:LocatedPredicateObject}[]{
         let sBroaderX = s.statements.filter(statement => this.predicatesBroader.includes(statement.predicate.text))
