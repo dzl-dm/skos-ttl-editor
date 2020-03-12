@@ -82,7 +82,7 @@ export class SemanticHandler {
             });
 
             //duplicate check
-            let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).indexOf(value.predicate.text + " " + value.object.text) !== index);
+            let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).filter(x => x === value.predicate.text + " " + value.object.text).length > 1);
             duplicates.forEach(d => {
                 this.addDiagnostic(d.location,vscode.DiagnosticSeverity.Information,"Duplicate entry '"+d.text+"'.");
             });
