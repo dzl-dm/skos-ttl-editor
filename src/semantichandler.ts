@@ -110,8 +110,8 @@ export class SemanticHandler {
     predicatesBroader = [ iridefs.broader, iridefs.topConceptOf ].concat(this.customHierarchicalReferencePredicatesBroader);
 
     getBroaderResourcesByStatements(s:SkosResource,mergedSkosSubjects: { [id: string]: SkosResource; }):{resource:SkosResource,statement:LocatedPredicateObject}[]{
-        let sBroaderX = s.statements.filter(statement => this.predicatesBroader.includes(statement.predicate.text))
-            .map(statement => {
+        let sBroaderX = s.statements.filter(statement => this.predicatesBroader.includes(statement.predicate.text))            
+        .map(statement => {
                 return {
                     resource:mergedSkosSubjects[statement.object.text],
                     statement:statement
@@ -132,9 +132,10 @@ export class SemanticHandler {
     }
     getAncestorLoops(s:SkosResource,mergedSkosSubjects: { [id: string]: SkosResource; },path:{resource:SkosResource,statement:LocatedPredicateObject}[]=[],loops:{resource:SkosResource,statement:LocatedPredicateObject}[][]=[]):{resource:SkosResource,statement:LocatedPredicateObject}[][]{
         this.getBroaderResourcesByStatements(s,mergedSkosSubjects).forEach(b => {   
-            if (path.length > 0 && path[0].resource === b.resource && path[0].statement === b.statement)
+            let sameAsPathElement = path.map(p => p.resource === b.resource && p.statement === b.statement);
+            if (sameAsPathElement.indexOf(true) > -1)
             {
-                loops.push(path);
+                loops.push(path.slice(sameAsPathElement.indexOf(true)));
             } else {
                 this.getAncestorLoops(b.resource,mergedSkosSubjects,path.concat(b),loops);
             }

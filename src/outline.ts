@@ -22,32 +22,32 @@ import {
         this.context = context;
         this.tree = rootNodes||[];
     }
+    treeSortByLabel = (a:SkosNode,b:SkosNode)=>{
+      let suborderedStartCharacters = ["_","<",":"];
+      if (!suborderedStartCharacters.includes(a.getLabel()[0]) && suborderedStartCharacters.includes(b.getLabel()[0])){
+        return -1;
+      } else if (suborderedStartCharacters.includes(a.getLabel()[0]) && !suborderedStartCharacters.includes(b.getLabel()[0])){
+        return 1;
+      } else if (a.getLabel()<b.getLabel()) {
+        return -1;
+      } else if (a.getLabel()>b.getLabel()){
+        return 1;
+      } else {
+        return 0;
+      }
+    }
     setTree(rootNodes:SkosNode[]){
-        let treeSortByLabel = (a:SkosNode,b:SkosNode)=>{
-          let suborderedStartCharacters = ["_","<",":"];
-          if (!suborderedStartCharacters.includes(a.getLabel()[0]) && suborderedStartCharacters.includes(b.getLabel()[0])){
-            return -1;
-          } else if (suborderedStartCharacters.includes(a.getLabel()[0]) && !suborderedStartCharacters.includes(b.getLabel()[0])){
-            return 1;
-          } else if (a.getLabel()<b.getLabel()) {
-            return -1;
-          } else if (a.getLabel()>b.getLabel()){
-            return 1;
-          } else {
-            return 0;
-          }
-        };
-        this.tree = rootNodes.filter(n => n.getTypes().includes(iridefs.conceptScheme)).sort(treeSortByLabel);
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.collection)).sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.concept)).sort(treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => [iridefs.conceptScheme,iridefs.collection,iridefs.concept].includes(x)).length === 0).sort(treeSortByLabel));
+        this.tree = rootNodes.filter(n => n.getTypes().includes(iridefs.conceptScheme)).sort(this.treeSortByLabel);
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.collection)).sort(this.treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.concept)).sort(this.treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => [iridefs.conceptScheme,iridefs.collection,iridefs.concept].includes(x)).length === 0).sort(this.treeSortByLabel));
         this.refresh();
     }
     getChildren(element?: SkosNode): SkosNode[] | Thenable<SkosNode[]> {
         if (element === undefined) {
             return this.tree;
         } else {
-            return element.getChildren();
+            return element.getChildren().sort(this.treeSortByLabel);
         }
     }
     getTreeItem(element: SkosNode): TreeItem {

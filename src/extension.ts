@@ -247,26 +247,6 @@ class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 	}	
 }
 
-class ConceptDefinitionProvider implements vscode.DefinitionProvider {
-	private sss:{ [id: string] : SkosResource; }={};
-	public constructor(sss:{ [id: string] : SkosResource; }){
-		this.sss = sss;
-	}
-	provideDefinition(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {		
-		let definitionIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		let items = Object.keys(this.sss).filter(i => i===definitionIri);
-		if (items.length>0) {
-			if (this.sss[items[0]].occurances.length === 1){
-				return this.sss[items[0]].occurances[0].location;
-			}
-			else if (this.sss[items[0]].occurances.length > 1){
-				showQuickPicksForConceptTextSelection(this.sss[items[0]].occurances.map(o => o.location));
-			}
-		}
-		return null;
-	}
-}
-
 class ConceptReferenceProvider implements vscode.ReferenceProvider {
 	private sss:{ [id: string] : SkosResource; }={};
 	public constructor(sss:{ [id: string] : SkosResource; }){
@@ -325,7 +305,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		if (objectrange) {
 			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
 				let ci = new vscode.CompletionItem(subjectHandler.getLabel(ss),vscode.CompletionItemKind.Property);
-				ci.insertText = ss.concept.text;
+				ci.insertText = skosParser.applyPrefix(ss.concept.text,document);
 				ci.documentation = ss.description;
 				return ci;
 			});
