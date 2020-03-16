@@ -9,7 +9,9 @@ export class SkosParser {
 
     prefixes:{[id:string]:Prefix[]}={};
 
-    parseTextDocument(document:vscode.TextDocument|undefined): { [id: string] : SkosResource; }|undefined {
+    async parseTextDocument(document:vscode.TextDocument|undefined): Promise<{
+        [id: string]: SkosResource;
+    } | undefined> {
         if (!document){
             return undefined;
         }
@@ -28,7 +30,8 @@ export class SkosParser {
     
         this.setPrefixes(document,resttext);
         let statements = this.getStatements(document,resttext);
-        return this.appendSSS(document,statements);
+        let sss = this.appendSSS(document,statements);
+        return sss;
     }
 
     getPrefixes(document:vscode.TextDocument):Prefix[];

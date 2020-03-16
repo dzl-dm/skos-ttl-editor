@@ -14,16 +14,18 @@ suite('Parser Test Suite', () => {
 
     test('Hierarchy diagnostic test', async () => {
         await new documenthandler.DocumentHandler({}).openTextDocument(uri).then(doc => {
-            let sss = new parser.SkosParser().parseTextDocument(doc)||{};
-            let semantichandler = new SemanticHandler();
-            semantichandler.checkSemantics(sss);
-            let diagnostics = semantichandler.diagnosticCollection.get(uri);  
-            assert.ok(diagnostics?.filter(d => {
-                return d.message === "Hierarchical recursion: <http://data.dzl.de/ont/dwh#TestResource2111>,<http://data.dzl.de/ont/dwh#TestResource211>,<http://data.dzl.de/ont/dwh#TestResource21>";
-            }).length === 3);
-            assert.ok(diagnostics?.filter(d => {
-                return d.message.startsWith("Hierarchical recursion: ");
-            }).length === 3);
+            new parser.SkosParser().parseTextDocument(doc).then(sss => {
+                if (!sss){return;}
+                let semantichandler = new SemanticHandler();
+                semantichandler.checkSemantics(sss);
+                let diagnostics = semantichandler.diagnosticCollection.get(uri);  
+                assert.ok(diagnostics?.filter(d => {
+                    return d.message === "Hierarchical recursion: <http://data.dzl.de/ont/dwh#TestResource2111>,<http://data.dzl.de/ont/dwh#TestResource211>,<http://data.dzl.de/ont/dwh#TestResource21>";
+                }).length === 3);
+                assert.ok(diagnostics?.filter(d => {
+                    return d.message.startsWith("Hierarchical recursion: ");
+                }).length === 3);
+            });
         });
     });
 });

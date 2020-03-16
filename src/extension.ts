@@ -64,46 +64,82 @@ export function activate(context: vscode.ExtensionContext) {
 		selectTextSnippet(node);
 	});
 
+	let loadingPromiseResolve:(value:{ [id: string] : SkosResource; })=>void;
+	let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
+		loadingPromiseResolve = resolve;			
+	});	
+	let wait = async () => await new Promise((resolve) => { setTimeout(() => { resolve(); }, 0); });
 	function loadTextDocuments(documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],inputThroughTyping:boolean=true):Promise<any>{
-		return new Promise((resolve,reject)=>{
-			semanticHandler.reset();
-			let numberOfDocuments:number = documents.length;
-			if (numberOfDocuments > 1) {
-				vscode.window.showInformationMessage("Loading "+numberOfDocuments+" documents...");
-			}
-			let numberOfLoadedTextDocuments = 0;
-			let updateConcepts:{
-                currentConcepts: { [id: string] : SkosResource; },
-                conceptsToUpdate: string[]
-            } = { currentConcepts: mergedSkosSubjects, conceptsToUpdate: []};
-			documents.forEach((document:vscode.TextDocument|Thenable<vscode.TextDocument>|undefined) =>  {
-				if (!document){return;}
-				Promise.resolve(document).then(d => {
-					let newsss = skosParser.parseTextDocument(d);
-					if (!newsss) {					
-						if (!inputThroughTyping) {
-							vscode.window.showInformationMessage(d.uri.fsPath + " is not well formatted.");
-						}
-					}
-					else {
-						allSkosSubjects[d.uri.path] = newsss;
-					}
-					updateConcepts.conceptsToUpdate = updateConcepts.conceptsToUpdate.concat(Object.keys(newsss || {}));
-					numberOfLoadedTextDocuments++;
-					if (numberOfLoadedTextDocuments >= numberOfDocuments){
-						Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);
-						let mergedSkosSubjectsTemp = subjectHandler.mergeSkosSubjects(allSkosSubjects, updateConcepts);
-						Object.keys(mergedSkosSubjectsTemp).forEach(key => {
-							mergedSkosSubjects[key] = mergedSkosSubjectsTemp[key];
+		semanticHandler.reset();
+		let numberOfDocuments:number = documents.length;
+		let numberOfLoadedTextDocuments = 0;
+		let updateConcepts:{
+			currentConcepts: { [id: string] : SkosResource; },
+			conceptsToUpdate: string[]
+		} = { currentConcepts: mergedSkosSubjects, conceptsToUpdate: []};
+
+		let loadprogress = 0;
+		let cancelled = false;
+		vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: "Loading "+documents.length+" document(s)",
+			cancellable: true
+		}, async (progress, token) => {
+			token.onCancellationRequested(()=>{
+				cancelled = true;
+			});
+			let loadDocument = async (i:number)=>{
+				if (cancelled) {return;}
+				if (i < numberOfDocuments){
+					if (!documents[i]){return;}
+					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>documents[i]).then(async d => {
+						progress.report({message: d.uri.fsPath});
+						await wait();
+						skosParser.parseTextDocument(d).then(async newsss => {
+							if (!newsss) {					
+								if (!inputThroughTyping) {
+									vscode.window.showInformationMessage(d.uri.fsPath + " is not well formatted.");
+								}
+							}
+							else {
+								allSkosSubjects[d.uri.path] = newsss;
+							}
+							updateConcepts.conceptsToUpdate = updateConcepts.conceptsToUpdate.concat(Object.keys(newsss || {}));
+							numberOfLoadedTextDocuments++;
+	
+							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
+							progress.report({ increment: progressdiff, message: d.uri.fsPath });
+							await wait();
+							loadprogress += progressdiff;
 						});
-						subjectHandler.updateReferences(mergedSkosSubjects);
-						createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
-						semanticHandler.checkSemantics(mergedSkosSubjects);
-						resolve();
-					}
-				});
-			});		
-		});		
+						loadDocument(i+1);
+					});
+				} else {
+					progress.report({ increment: 0, message: "Merging" });
+					await wait();
+					Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);
+					let mergedSkosSubjectsTemp = subjectHandler.mergeSkosSubjects(allSkosSubjects, updateConcepts);
+					Object.keys(mergedSkosSubjectsTemp).forEach(key => {
+						mergedSkosSubjects[key] = mergedSkosSubjectsTemp[key];
+					});
+					subjectHandler.updateReferences(mergedSkosSubjects);
+					progress.report({ increment: 5, message: "Tree View creation" });
+					await wait();
+					createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
+					progress.report({ increment: 5, message: "Semantic checks" });
+					await wait();
+					await semanticHandler.checkSemantics(mergedSkosSubjects,{
+						progress,ticks:20
+					});
+					progress.report({ increment: 0, message: "Done." });
+					await wait();
+					loadingPromiseResolve(mergedSkosSubjects);
+				}
+			};
+			loadDocument(0);
+			return loadingPromise;	
+		});
+		return loadingPromise;
 	}
 
 	loadTextDocuments([vscode.window.activeTextEditor?.document],false);
@@ -186,7 +222,7 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	context.subscriptions.push(
 		vscode.languages.registerHoverProvider(
-			'turtle', new ConceptHoverProvider(mergedSkosSubjects)));
+			'turtle', new ConceptHoverProvider(loadingPromise)));
 	context.subscriptions.push(
 		vscode.languages.registerDocumentSymbolProvider(
 			'turtle', new SkosDocumentSymbolProvider(mergedSkosSubjects)));
@@ -277,19 +313,24 @@ class ConceptImplementationProvider implements vscode.ImplementationProvider {
 }
 
 class ConceptHoverProvider implements vscode.HoverProvider {
-	private sss:{ [id: string] : SkosResource; }={};
-	public constructor(sss:{ [id: string] : SkosResource; }){
-		this.sss = sss;
+	private sssp:Promise<{ [id: string] : SkosResource; }>;
+	public constructor(sssp:Promise<{ [id: string] : SkosResource; }>){
+		this.sssp = sssp;
 	}
-    public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):vscode.Hover {
-		let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		hoveredIri = skosParser.resolvePrefix(hoveredIri,document) || hoveredIri;
-		let items = Object.keys(this.sss).filter(i => i===hoveredIri);
-		if (items.length>0) {
-			return new vscode.Hover(this.sss[items[0]].description);
-		} else {
-			return new vscode.Hover("");
-		}
+    public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):Promise<vscode.Hover> {
+		let result:Promise<vscode.Hover>=new Promise(resolve => {
+			this.sssp.then(sss => {
+				let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
+				hoveredIri = skosParser.resolvePrefix(hoveredIri,document) || hoveredIri;
+				let items = Object.keys(sss).filter(i => i===hoveredIri);
+				if (items.length>0) {
+					resolve(new vscode.Hover(sss[items[0]].description));
+				} else {
+					resolve(new vscode.Hover(""));
+				}
+			});
+		});
+		return result;
     }
 }
 
