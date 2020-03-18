@@ -220,5 +220,8 @@
 		"tslint": "^5.20.0",
 		"typescript": "^3.8.3",
 		"vscode-test": "^1.2.2"
+	},
+	"dependencies": {
+		"vsce": "^1.74.0"
 	}
 }

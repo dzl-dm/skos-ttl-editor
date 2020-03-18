@@ -64,12 +64,12 @@ export function activate(context: vscode.ExtensionContext) {
 		selectTextSnippet(node);
 	});
 
-	let loadingPromiseResolve:(value:{ [id: string] : SkosResource; })=>void;
-	let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
-		loadingPromiseResolve = resolve;			
-	});	
 	let wait = async () => await new Promise((resolve) => { setTimeout(() => { resolve(); }, 0); });
 	function loadTextDocuments(documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],inputThroughTyping:boolean=true):Promise<any>{
+		let loadingPromiseResolve:(value:{ [id: string] : SkosResource; })=>void;
+		let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
+			loadingPromiseResolve = resolve;			
+		});	
 		semanticHandler.reset();
 		let numberOfDocuments:number = documents.length;
 		let numberOfLoadedTextDocuments = 0;
@@ -93,7 +93,8 @@ export function activate(context: vscode.ExtensionContext) {
 				if (i < numberOfDocuments){
 					if (!documents[i]){return;}
 					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>documents[i]).then(async d => {
-						progress.report({message: d.uri.fsPath});
+						let filename = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
+						progress.report({message: filename});
 						await wait();
 						skosParser.parseTextDocument(d).then(async newsss => {
 							if (!newsss) {					
@@ -108,7 +109,7 @@ export function activate(context: vscode.ExtensionContext) {
 							numberOfLoadedTextDocuments++;
 	
 							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
-							progress.report({ increment: progressdiff, message: d.uri.fsPath });
+							progress.report({ increment: progressdiff, message: filename });
 							await wait();
 							loadprogress += progressdiff;
 						});
@@ -142,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
 		return loadingPromise;
 	}
 
-	loadTextDocuments([vscode.window.activeTextEditor?.document],false);
+	let initialLoadingPromise = loadTextDocuments([vscode.window.activeTextEditor?.document],false);
 
 	let onDidChangeTextDocumentLock = Promise.resolve();
 	let loadDocumentsPromiseFinished = true;
@@ -222,7 +223,7 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	context.subscriptions.push(
 		vscode.languages.registerHoverProvider(
-			'turtle', new ConceptHoverProvider(loadingPromise)));
+			'turtle', new ConceptHoverProvider(initialLoadingPromise)));
 	context.subscriptions.push(
 		vscode.languages.registerDocumentSymbolProvider(
 			'turtle', new SkosDocumentSymbolProvider(mergedSkosSubjects)));
