@@ -3,38 +3,56 @@ import { SkosOutlineProvider } from './outline';
 import { SkosNode } from './skosnode';
 import * as parser from './parser';
 import { SkosParser, iridefs } from './parser';
-import { SkosResource, SubjectHandler, getObjectValuesByPredicate } from './subjecthandler';
+import { SkosResource, SkosResourceHandler, getObjectValuesByPredicate } from './skosresourcehandler';
 import { DocumentHandler } from './documenthandler';
 import { SemanticHandler } from './semantichandler';
+import { LoadingHandler } from './loadinghandler';
 
-let semanticHandler = new SemanticHandler();
-let subjectHandler = new SubjectHandler();
-let skosParser = new SkosParser(subjectHandler);
-let documentHandler = new DocumentHandler({subjectHandler,parser:skosParser});
+
+let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
+const mergedSkosResources: { [id: string] : SkosResource; } = {};
+let skosResourceHandler = new SkosResourceHandler();
+let skosParser = new SkosParser(skosResourceHandler);
+let documentHandler = new DocumentHandler({
+	mergedSkosResources,
+	skosResourceHandler,
+	skosParser
+});
+let loadingHandler:LoadingHandler;
 
 export function activate(context: vscode.ExtensionContext) {
-	let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
-	const mergedSkosSubjects: { [id: string] : SkosResource; } = {};
-	const skosOutlineProvider = new SkosOutlineProvider(context);
+	const skosOutlineProvider = new SkosOutlineProvider({
+		context,
+		mergedSkosResources,
+		skosResourceHandler		
+	});
+	loadingHandler = new LoadingHandler({
+		mergedSkosResources,
+		skosResourceHandler,
+		skosParser,
+		skosOutlineProvider,
+		documentHandler,
+		allSkosSubjects
+	});
 
 	vscode.commands.registerCommand('skos-ttl-editor.addConcept', (node:SkosNode) => {
 		let text = "${1::NEWCONCEPT"+Date.now()+"} a skos:Concept ;\n";
 		text += "\t"+iridefs.broader+" "+node.getConcept()+" ;\n";
 		text += "\t"+iridefs.prefLabel+" \"${2:prefered label}\"@en ;\n";
-		documentHandler.insertText(mergedSkosSubjects[node.getConcept()],text,"after").then(()=>{
+		documentHandler.insertText(mergedSkosResources[node.getConcept()],text,"after").then(()=>{
 			vscode.window.showInformationMessage("Added concept \""+node.getLabel()+"\" to concept \""+node.getLabel()+"\".");
 		});
 	});
 	vscode.commands.registerCommand('skos-ttl-editor.appendToScheme', (node:SkosNode) => {
 		vscode.window.showQuickPick(
-			Object.keys(mergedSkosSubjects)
-				.map(key => mergedSkosSubjects[key])
+			Object.keys(mergedSkosResources)
+				.map(key => mergedSkosResources[key])
 				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
 				.map(s => s.concept.text)
 		).then(a => {
 			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
 			documentHandler.insertText(
-				mergedSkosSubjects[node.getConcept()],
+				mergedSkosResources[node.getConcept()],
 				"\tskos:inScheme "+a+" ;",
 				"append"
 			).then(()=>{
@@ -44,13 +62,13 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	vscode.commands.registerCommand('skos-ttl-editor.appendSubtreeToScheme', (node:SkosNode) => {
 		vscode.window.showQuickPick(
-			Object.keys(mergedSkosSubjects)
-				.map(key => mergedSkosSubjects[key])
+			Object.keys(mergedSkosResources)
+				.map(key => mergedSkosResources[key])
 				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
 				.map(s => s.concept.text)
 		).then(a => {
 			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
-			let concepts = subjectHandler.getDescendants(mergedSkosSubjects[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
+			let concepts = skosResourceHandler.getDescendants(mergedSkosResources[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
 			documentHandler.insertText(
 				concepts,
 				"\tskos:inScheme "+a+" ;",
@@ -64,169 +82,44 @@ export function activate(context: vscode.ExtensionContext) {
 		selectTextSnippet(node);
 	});
 
-	let wait = async () => await new Promise((resolve) => { setTimeout(() => { resolve(); }, 0); });
-	function loadTextDocuments(documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],inputThroughTyping:boolean=true):Promise<any>{
-		let loadingPromiseResolve:(value:{ [id: string] : SkosResource; })=>void;
-		let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
-			loadingPromiseResolve = resolve;			
-		});	
-		semanticHandler.reset();
-		let numberOfDocuments:number = documents.length;
-		let numberOfLoadedTextDocuments = 0;
-		let conceptsToUpdate: string[]=[];
-
-		let loadprogress = 0;
-		let parsingDocuments:Promise<any>[]=[];
-		let cancelled = false;
-		vscode.window.withProgress({
-			location: vscode.ProgressLocation.Notification,
-			title: "Loading "+documents.length+" document(s)",
-			cancellable: true
-		}, async (progress, token) => {
-			token.onCancellationRequested(()=>{
-				cancelled = true;
-			});
-			let loadDocument = async (i:number)=>{
-				if (cancelled) {return;}
-				if (i < numberOfDocuments){
-					if (!documents[i]){return;}
-					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>documents[i]).then(async d => {
-						let filename = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
-						progress.report({message: filename});
-						await wait();
-						let p = skosParser.parseTextDocument(d);
-						parsingDocuments.push(p);
-						p.then(async newsss => {
-							if (!newsss) {					
-								if (!inputThroughTyping) {
-									vscode.window.showInformationMessage(d.uri.fsPath + " is not well formatted.");
-								}
-							}
-							else {
-								allSkosSubjects[d.uri.path] = newsss;
-							}
-							conceptsToUpdate = conceptsToUpdate.concat(Object.keys(newsss || {}));
-							numberOfLoadedTextDocuments++;
+	let initialLoadingPromise = loadingHandler.loadTextDocuments([vscode.window.activeTextEditor?.document],false);
 	
-							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
-							progress.report({ increment: progressdiff, message: filename });
-							await wait();
-							loadprogress += progressdiff;
-						});
-						loadDocument(i+1);
-					});
-				} else {
-					Promise.resolve(parsingDocuments).then(async ()=>{
-						if (conceptsToUpdate.length === 0){
-							loadingPromiseResolve(mergedSkosSubjects);
-							return;
-						}
-						progress.report({ increment: 0, message: "Merging" });
-						await wait();
-						Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);
-						conceptsToUpdate = conceptsToUpdate.filter((value,index,array) => array.indexOf(value)===index);
-						let mergedSkosSubjectsTemp = subjectHandler.mergeSkosSubjects(allSkosSubjects,mergedSkosSubjects,conceptsToUpdate);
-						Object.keys(mergedSkosSubjectsTemp).forEach(key => {
-							mergedSkosSubjects[key] = mergedSkosSubjectsTemp[key];
-						});
-						subjectHandler.updateReferences(mergedSkosSubjects);
-						progress.report({ increment: 5, message: "Tree View creation" });
-						await wait();
-						createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
-						progress.report({ increment: 5, message: "Semantic checks" });
-						await wait();
-						await semanticHandler.checkSemantics(mergedSkosSubjects,{
-							progress,ticks:20
-						});
-						progress.report({ increment: 0, message: "Done." });
-						await wait();
-						loadingPromiseResolve(mergedSkosSubjects);
-					});					
-				}
-			};
-			loadDocument(0);
-			return loadingPromise;	
-		});
-		return loadingPromise;
-	}
-
-	let initialLoadingPromise = loadTextDocuments([vscode.window.activeTextEditor?.document],false);
-
-	let onDidChangeTextDocumentLock = Promise.resolve();
-	let loadDocumentsPromiseFinished = true;
-	let queuedChangeEvent: vscode.TextDocumentChangeEvent|undefined;
-	function loadTextDocumentsAfterTextDocumentChange(changeEvent: vscode.TextDocumentChangeEvent){
-		if (loadDocumentsPromiseFinished){
-			loadDocumentsPromiseFinished = false;
-			onDidChangeTextDocumentLock = loadTextDocuments([vscode.window.activeTextEditor?.document]);
-			onDidChangeTextDocumentLock.then(()=>{
-				loadDocumentsPromiseFinished=true;
-				if (queuedChangeEvent){
-					loadTextDocumentsAfterTextDocumentChange(queuedChangeEvent);
-					queuedChangeEvent = undefined;
-				}
-				else if (vscode.window.activeTextEditor) {
-					let selectedConcepts = getConceptsAtRange(vscode.window.activeTextEditor.document, vscode.window.activeTextEditor?.selections[0]);
-					if (selectedConcepts.length>0) { 
-						skosOutlineProvider.selectTreeItem(selectedConcepts[0].treeviewNodes[0]); 
-					}
-				}
-			});
-		}
-		else {
-			queuedChangeEvent = changeEvent;
-		}
-	}
 	let inputDelay:NodeJS.Timeout;
+	let changeEvents:vscode.TextDocumentChangeEvent[]=[];
 	let parseDelay:number = <number>vscode.workspace.getConfiguration().get("skos-ttl-editor.parsingAndVerificationDelayAfterUserInput");
 	vscode.workspace.onDidChangeTextDocument(changeEvent => {
 		if (inputDelay){
+			if (changeEvent.contentChanges.length>0){
+				changeEvents.push(changeEvent);
+			}
 			clearTimeout(inputDelay);
 		}
 		inputDelay = setTimeout(()=>{
-			loadTextDocumentsAfterTextDocumentChange(changeEvent);
+			loadingHandler.loadTextDocumentsAfterTextDocumentChange(changeEvents);
 		},parseDelay);
 	});	
 
 	vscode.window.onDidChangeTextEditorSelection((selection)=>{
-		if (!queuedChangeEvent){
+		if (!loadingHandler.queuedChangeEvents){
 			if (selection.kind !== vscode.TextEditorSelectionChangeKind.Mouse) { return; }
-			let selectedConcepts = getConceptsAtRange(selection.textEditor.document,selection.selections[0]);
+			let selectedConcepts = documentHandler.getAffectedResourcesAndLocationHullsByDocumentAndRange([{document: selection.textEditor.document,range: selection.selections[0]}]).resources;
 			if (selectedConcepts.length>0) { 
 				skosOutlineProvider.selectTreeItem(selectedConcepts[0].treeviewNodes[0]); 
 			}
 		}
 	});
 
-	function getConceptsAtRange(document:vscode.TextDocument, range:vscode.Range):SkosResource[]{
-		let lineFrom = range.start.line;
-		let lineTo = range.end.line;
-		let keys = Object.keys(mergedSkosSubjects);
-		let concepts:SkosResource[]=[];
-		for (let i = 0; i < keys.length; i++) {
-			let key = keys[i];
-			let locations = mergedSkosSubjects[key].occurances.map(o => o.location);
-			for (let j = 0; j < locations.length; j++){
-			let location = locations[j];
-				if (location.uri.fsPath === document.uri.fsPath && location.range.start.line <= lineTo && location.range.end.line >= lineFrom) {
-					concepts.push(mergedSkosSubjects[key]);
-				}
-			}
-		}	
-		return concepts;	
-	}
-
 	vscode.window.onDidChangeActiveTextEditor(changeEvent => {
 		if (!vscode.window.activeTextEditor){return;}
 		if (!Object.keys(allSkosSubjects).includes(vscode.window.activeTextEditor.document.uri.path)){
-			loadTextDocuments([vscode.window.activeTextEditor?.document],false);
+			loadingHandler.loadTextDocuments([vscode.window.activeTextEditor?.document],false);
 		}
 	});
 
 	context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
 			'turtle', 
-			new CompletionItemProvider(mergedSkosSubjects), 
+			new CompletionItemProvider(mergedSkosResources), 
 			':',' ')
 		);
 	context.subscriptions.push(
@@ -234,22 +127,22 @@ export function activate(context: vscode.ExtensionContext) {
 			'turtle', new ConceptHoverProvider(initialLoadingPromise)));
 	context.subscriptions.push(
 		vscode.languages.registerDocumentSymbolProvider(
-			'turtle', new SkosDocumentSymbolProvider(mergedSkosSubjects)));
+			'turtle', new SkosDocumentSymbolProvider(mergedSkosResources)));
 	/*context.subscriptions.push(
 		vscode.languages.registerDefinitionProvider(
 			'turtle', new ConceptDefinitionProvider(mergedSkosSubjects)));*/
 	context.subscriptions.push(
 		vscode.languages.registerImplementationProvider(
-			'turtle', new ConceptImplementationProvider(mergedSkosSubjects)));
+			'turtle', new ConceptImplementationProvider(mergedSkosResources)));
 	context.subscriptions.push(
 		vscode.languages.registerReferenceProvider(
-			'turtle', new ConceptReferenceProvider(mergedSkosSubjects)));
+			'turtle', new ConceptReferenceProvider(mergedSkosResources)));
 
 	vscode.commands.registerCommand('skos-ttl-editor.reload', () => {
 		Object.keys(allSkosSubjects).forEach(key => delete allSkosSubjects[key]);
-		Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);		
+		Object.keys(mergedSkosResources).forEach(key => delete mergedSkosResources[key]);		
 		if (vscode.window.activeTextEditor){
-			loadTextDocuments([vscode.window.activeTextEditor.document]);	
+			loadingHandler.loadTextDocuments([vscode.window.activeTextEditor.document]);	
 		}
 	});	
 	vscode.commands.registerCommand('skos-ttl-editor.complementFiles', () => {
@@ -258,7 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
 				if (files.length === 0){
 					vscode.window.showInformationMessage("No files to load. Did you open a folder in Visual Studio Code?");
 				}
-				loadTextDocuments(
+				loadingHandler.loadTextDocuments(
 					files.filter(file => !Object.keys(allSkosSubjects).includes(file.path))
 						.map(file => vscode.workspace.openTextDocument(file.path)),
 					false
@@ -354,7 +247,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		let objectrange = document.getWordRangeAtPosition(position,new RegExp(skosParser.getSkosPrefix(document)+"(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
 		if (objectrange) {
 			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
-				let ci = new vscode.CompletionItem(subjectHandler.getLabel(ss),vscode.CompletionItemKind.Property);
+				let ci = new vscode.CompletionItem(skosResourceHandler.getLabel(ss),vscode.CompletionItemKind.Property);
 				ci.insertText = skosParser.applyPrefix(ss.concept.text,document);
 				ci.documentation = ss.description;
 				return ci;
@@ -404,54 +297,6 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 			.sort());
 		return result;
 	}
-}
-
-function createTreeviewContent(skosOutlineProvider:SkosOutlineProvider, sss:{ [id: string] : SkosResource; } ){	
-	let topsss: SkosResource[]=[];
-	Object.keys(sss).forEach(key => {
-		if (sss[key].parents.filter(p => !getObjectValuesByPredicate(iridefs.type,p).includes(iridefs.conceptScheme)).length===0){
-			topsss.push(sss[key]);
-		}
-	});
-	let topnodes:SkosNode[]=[];
-	function addSkosNodes(m:SkosResource,node:SkosNode,scheme?:string){
-		let childnodes:SkosNode[]=[];
-		m.children.forEach(c => {
-			if (scheme && !getObjectValuesByPredicate(iridefs.inScheme,c).includes(scheme)){return;}
-			let childnode = new SkosNode(c.concept.text);
-			childnode.setNodeAttributes({parent:node});
-			childnodes.push(childnode);
-			addSkosNodes(c,childnode,scheme);
-		});
-		node.setNodeAttributes({
-			children:childnodes,
-			label:subjectHandler.getLabel(m),
-			notations:getObjectValuesByPredicate(iridefs.notation,m),
-			iconname: m.icon,
-			occurances: m.occurances,
-			types: getObjectValuesByPredicate(iridefs.type,m)
-		});
-		m.treeviewNodes.push(node);
-	}
-	let schemes = Object.keys(sss)
-		.map(key => getObjectValuesByPredicate(iridefs.inScheme,sss[key]))
-		.reduce((prev,current) => prev = prev.concat(current),[])
-		.filter((value, index, array) => array.indexOf(value)===index);
-	topsss.forEach(m => {
-		let topnode = new SkosNode(m.concept.text);
-		topnodes.push(topnode);
-		if (schemes.includes(m.concept.text)){
-			let topschemenodes = Object.keys(sss)
-				.map(key => sss[key])
-				.filter(s => getObjectValuesByPredicate(iridefs.inScheme,s).includes(m.concept.text) && !s.parents.map(p => getObjectValuesByPredicate(iridefs.inScheme,p)).reduce((p,c)=>p=p.concat(c),[]).includes(m.concept.text));
-			m.children = topschemenodes;
-			addSkosNodes(m,topnode,m.concept.text);
-		}
-		else {
-			addSkosNodes(m,topnode);
-		}
-	});
-	skosOutlineProvider.setTree(topnodes);
 }
 
 function selectTextSnippet(node:SkosNode){

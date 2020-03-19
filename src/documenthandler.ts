@@ -1,16 +1,19 @@
 import * as vscode from 'vscode';
-import { SkosResource, SubjectHandler } from './subjecthandler';
+import { SkosResource, SkosResourceHandler } from './skosresourcehandler';
 import { SkosParser } from './parser';
 
 export class DocumentHandler { 
-    subjectHandler:SubjectHandler;
-    parser:SkosParser;
+    skosResourceHandler:SkosResourceHandler;
+    skosParser:SkosParser;
+    mergedSkosResources: { [id: string] : SkosResource; };
     constructor(options:{
-        subjectHandler?:SubjectHandler,
-        parser?:SkosParser
+        mergedSkosResources: { [id: string] : SkosResource; },
+        skosResourceHandler?:SkosResourceHandler,
+        skosParser?:SkosParser
     }){
-        this.subjectHandler=options.subjectHandler || new SubjectHandler();
-        this.parser=options.parser || new SkosParser(this.subjectHandler);
+        this.mergedSkosResources = options.mergedSkosResources;
+        this.skosResourceHandler=options.skosResourceHandler || new SkosResourceHandler();
+        this.skosParser=options.skosParser || new SkosParser(this.skosResourceHandler);
     } 
     async insertText(sss:SkosResource[]|SkosResource, text:string, type:"append"|"after"):Promise<any>{
         return new Promise(async (resolve,reject)=>{
@@ -49,7 +52,7 @@ export class DocumentHandler {
                     textBefore:string,
                     textAfter:string
                 }[]>concepts.filter(c => {
-                    if (c.occurances.length === 0 && type === "append") { vscode.window.showErrorMessage(this.subjectHandler.getLabel(c) + " occurs nowhere."); return false; }
+                    if (c.occurances.length === 0 && type === "append") { vscode.window.showErrorMessage(this.skosResourceHandler.getLabel(c) + " occurs nowhere."); return false; }
                     if (c.occurances.length === 0 && type === "after" && !vscode.window.activeTextEditor) { vscode.window.showErrorMessage("No open editor to insert."); return false; }
                     return true;
                 }).map(c => {
@@ -90,7 +93,7 @@ export class DocumentHandler {
                     return this.showTextDocument(doc).then((editor)=>{
                         if (!editor){return;}
                         inserts.filter(i => i.uri.fsPath === doc.uri.fsPath).forEach(i => {
-                            editor.insertSnippet(new vscode.SnippetString(i.textBefore+this.parser.applyPrefixesOnText(text,doc)+i.textAfter),i.position);
+                            editor.insertSnippet(new vscode.SnippetString(i.textBefore+this.skosParser.applyPrefixesOnText(text,doc)+i.textAfter),i.position);
                         });
                         /*return editor.edit(editBuilder => {
                             inserts.filter(i => i.uri.fsPath === doc.uri.fsPath).forEach(i => {
@@ -136,4 +139,44 @@ export class DocumentHandler {
             });
         });
     }
+
+    getAffectedResourcesAndLocationHullsByDocumentAndRange(fromOccurances:{document:vscode.TextDocument,range:vscode.Range}[]):{
+		resources:SkosResource[],
+		hullLocations:vscode.Location[]
+	}{
+		let hullLocations=fromOccurances.map(occ => new vscode.Location(occ.document.uri,occ.range));
+		let affectedResources:SkosResource[]=[];
+		let keys = Object.keys(this.mergedSkosResources);
+		for (let j = 0; j < keys.length; j++){
+			let r = this.mergedSkosResources[keys[j]];
+			for (let i = 0; i < r.occurances.length;i++){
+				let occ = r.occurances[i];
+				for (let k = 0; k < fromOccurances.length; k++){
+					let fromOccurance = fromOccurances[k];
+					if (fromOccurance.document.uri.fsPath !== occ.location.uri.fsPath){continue;}
+					let document = fromOccurance.document;
+					let occrange = occ.location.range;
+					if (document.offsetAt(occrange.end) >= document.offsetAt(fromOccurance.range.start) && document.offsetAt(occrange.start) <= document.offsetAt(fromOccurance.range.end)){
+						if (document.offsetAt(occrange.start) < document.offsetAt(hullLocations[k].range.start)){
+							hullLocations[k] = new vscode.Location(
+								hullLocations[k].uri,
+								new vscode.Range(occrange.start,hullLocations[k].range.end)
+							);
+						}
+						if (document.offsetAt(occrange.end) > document.offsetAt(hullLocations[k].range.end)){
+							hullLocations[k] = new vscode.Location(
+								hullLocations[k].uri,
+								new vscode.Range(hullLocations[k].range.start,occrange.end)
+							);
+						}
+						affectedResources.push(r);
+					}
+				}
+			}
+		}
+		return {
+			resources: affectedResources,
+			hullLocations
+		};
+	}
 }

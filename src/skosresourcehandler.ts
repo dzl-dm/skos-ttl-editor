@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { SkosNode } from './skosnode';
 import { LocatedText, LocatedPredicateObject, iridefs, LocatedSubject } from './parser';
 
-export class SubjectHandler {     
+export class SkosResourceHandler {     
     getEmptySkosSubject(concept:LocatedSubject):SkosResource{
         return {
             concept:concept,

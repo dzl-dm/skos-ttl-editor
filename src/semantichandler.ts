@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SkosResource, getStatementsByPredicate } from './subjecthandler';
+import { SkosResource, getStatementsByPredicate } from './skosresourcehandler';
 import { iridefs, IRIREF, LocatedPredicateObject } from './parser';
 
 export class SemanticHandler {

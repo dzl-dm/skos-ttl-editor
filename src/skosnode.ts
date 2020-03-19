@@ -1,5 +1,5 @@
   import * as vscode from 'vscode';
-import { SkosResource } from './subjecthandler';
+import { SkosResource } from './skosresourcehandler';
   
   export class SkosNode {
 	private concept:string;

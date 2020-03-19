@@ -3,7 +3,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as parser from '../../parser';
 import * as documenthandler from '../../documenthandler';
-import * as subjecthandler from '../../subjecthandler';
+import * as subjecthandler from '../../skosresourcehandler';
 import * as path from 'path';
 import { SemanticHandler } from '../../semantichandler';
 

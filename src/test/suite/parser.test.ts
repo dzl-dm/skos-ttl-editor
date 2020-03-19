@@ -3,7 +3,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as parser from '../../parser';
 import * as documenthandler from '../../documenthandler';
-import * as subjecthandler from '../../subjecthandler';
+import * as subjecthandler from '../../skosresourcehandler';
 import * as path from 'path';
 
 suite('Parser Test Suite', () => {
@@ -26,7 +26,7 @@ suite('Parser Test Suite', () => {
         await new documenthandler.DocumentHandler({}).openTextDocument(vscode.Uri.file(path.join(__dirname,'../../../src/test/test.ttl'))).then(async doc => {
             await new parser.SkosParser().parseTextDocument(doc).then(sss => {
                 if (!sss){return;}
-                new subjecthandler.SubjectHandler().updateReferences(sss);
+                new subjecthandler.SkosResourceHandler().updateReferences(sss);
                 let tr1 = sss["<http://data.dzl.de/ont/dwh#TestResource1>"];
                 let tr11 = sss["<http://data.dzl.de/ont/dwh#TestResource11>"];
                 assert.ok(tr11.parents.includes(tr1));

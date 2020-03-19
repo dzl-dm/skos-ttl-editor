@@ -1,10 +1,10 @@
 import * as vscode from 'vscode';
-import { SkosResource, SubjectHandler } from './subjecthandler';
+import { SkosResource, SkosResourceHandler } from './skosresourcehandler';
 
 export class SkosParser {
-    subjectHandler:SubjectHandler;
-    constructor(subjectHandler?:SubjectHandler){
-        this.subjectHandler=subjectHandler||new SubjectHandler();
+    subjectHandler:SkosResourceHandler;
+    constructor(subjectHandler?:SkosResourceHandler){
+        this.subjectHandler=subjectHandler||new SkosResourceHandler();
     }
 
     prefixes:{[id:string]:Prefix[]}={};
