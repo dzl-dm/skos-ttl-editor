@@ -16,8 +16,7 @@ export class SkosParser {
             return undefined;
         }
         let text = document.getText();
-        let raute = new RegExp("(?:("+IRIREF+"|"+Sstring+")|\\#[^\\n]*)","g");
-        let resttext = text.replace(raute, "$1");
+        let resttext = this.removeComments(text);
     
         /* Causes stack overflow for large documents.
         let turtledoc_match = new RegExp(turtleDoc);
@@ -30,7 +29,10 @@ export class SkosParser {
     
         this.setPrefixes(document,resttext);
         let statements = this.getStatements(document,resttext);
-        let sss = this.appendSSS(document,statements);
+        if (statements === undefined){
+            return undefined;
+        }
+        let sss = this.appendSSS(document,<LocatedText[]>statements);
         return sss;
     }
 
@@ -81,7 +83,12 @@ export class SkosParser {
         this.prefixes[document.uri.fsPath] = result;
     }
 
-    private getStatements(document:vscode.TextDocument,s:string):LocatedText[]{
+    private removeComments(s:string):string{
+        let raute = new RegExp("(?:("+IRIREF+"|"+Sstring+")|\\#[^\\n]*)","g");
+        return s.replace(raute, "$1");
+    }
+
+    private getStatements(document:vscode.TextDocument,s:string):LocatedText[]|undefined{
         let result:LocatedText[]=[];
         let tempmatch;
         let triples_match = new RegExp(triples,"g");
@@ -97,7 +104,7 @@ export class SkosParser {
             text:s
         };
         
-        while (tempmatch = triples_match.exec(s)){        
+        while (tempmatch = triples_match.exec(s)){    
             //extend statement location till next dot
             let textBeforeDot = s.substring(tempmatch.index+tempmatch[0].length,s.indexOf(".",tempmatch.index+tempmatch[0].length));
             let linesplit = textBeforeDot.split(/\r\n|\r|\n/);

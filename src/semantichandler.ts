@@ -127,10 +127,12 @@ export class SemanticHandler {
     }
 
     private recursionCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+        this.checkedResources=[];
         Object.keys(mergedSkosSubjects).forEach(key => {
             let s = mergedSkosSubjects[key];
-            let loops = this.getAncestorLoops(s,mergedSkosSubjects);
-            loops.forEach(loop => {
+            this.loops = [];
+            this.getAncestorLoops(s,mergedSkosSubjects);
+            this.loops.forEach(loop => {
                 loop.forEach(a => {
                     if (this.diagnosticCollection.get(a.statement.location.uri)?.filter(d => d.message.startsWith("Hierarchical recursion:") 
                         && d.range.start.line === a.statement.location.range.start.line
@@ -173,24 +175,27 @@ export class SemanticHandler {
         }).reduce((prev,curr)=>prev = prev.concat(curr),[]);
         return sBroaderX.concat(xNarrowerS);
     }
+
+    checkedResources:string[] = [];
+    loops:{resource:SkosResource,statement:LocatedPredicateObject}[][]=[];
     private getAncestorLoops(
         s:SkosResource,
         mergedSkosSubjects: { [id: string]: SkosResource; },
-        path:{resource:SkosResource,statement:LocatedPredicateObject}[]=[],
-        loops:{resource:SkosResource,statement:LocatedPredicateObject}[][]=[],
-        checkedResources:SkosResource[]=[]
-    ):{resource:SkosResource,statement:LocatedPredicateObject}[][]{
-        if (!checkedResources.includes(s)){
-            this.getBroaderResourcesByStatements(s,mergedSkosSubjects).forEach(b => {   
+        path:{resource:SkosResource,statement:LocatedPredicateObject}[]=[]
+    ){
+        if (!this.checkedResources.includes(s.concept.text)){
+            let broaders = this.getBroaderResourcesByStatements(s,mergedSkosSubjects);
+            for (let i = 0; i < broaders.length; i++){
+                let b = broaders[i];
                 let sameAsPathElement = path.map(p => p.resource === b.resource && p.statement === b.statement);
                 if (sameAsPathElement.indexOf(true) > -1)
                 {
-                    loops.push(path.slice(sameAsPathElement.indexOf(true)));
+                    this.loops.push(path.slice(sameAsPathElement.indexOf(true)));
                 } else {
-                    this.getAncestorLoops(b.resource,mergedSkosSubjects,path.concat(b),loops,checkedResources.splice(checkedResources.length,0,s));
+                    this.getAncestorLoops(b.resource,mergedSkosSubjects,path.concat(b));
                 }
-            });
+            }
+            this.checkedResources.push(s.concept.text);
         }
-        return loops;
     }
 }

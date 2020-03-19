@@ -147,16 +147,15 @@ export class SubjectHandler {
         });	
         return result;
     }   
-    mergeSkosSubjects(allSkosSubjects:{[id:string]:{ [id: string] : SkosResource; }}, updateConcepts?:{
-                currentConcepts: { [id: string] : SkosResource; },
+    mergeSkosSubjects(allSkosSubjects:{[id:string]:{ [id: string] : SkosResource; }},
+                mergedSkosResources: { [id: string] : SkosResource; },
                 conceptsToUpdate: string[]
-            }
         ):{ [id: string] : SkosResource; }{
         let sss:{ [id: string] : SkosResource; }={};
         Object.keys(allSkosSubjects).forEach(filename => {
             Object.keys(allSkosSubjects[filename]).forEach(subjectname => {
-                if (updateConcepts && !updateConcepts.conceptsToUpdate.includes(subjectname) && Object.keys(updateConcepts.currentConcepts).includes(subjectname)){
-                    sss[subjectname] = updateConcepts.currentConcepts[subjectname];
+                if (!conceptsToUpdate.includes(subjectname) && Object.keys(mergedSkosResources).includes(subjectname)){
+                    sss[subjectname] = mergedSkosResources[subjectname];
                 }
                 else {
                     let ss = allSkosSubjects[filename][subjectname];

@@ -73,12 +73,10 @@ export function activate(context: vscode.ExtensionContext) {
 		semanticHandler.reset();
 		let numberOfDocuments:number = documents.length;
 		let numberOfLoadedTextDocuments = 0;
-		let updateConcepts:{
-			currentConcepts: { [id: string] : SkosResource; },
-			conceptsToUpdate: string[]
-		} = { currentConcepts: mergedSkosSubjects, conceptsToUpdate: []};
+		let conceptsToUpdate: string[]=[];
 
 		let loadprogress = 0;
+		let parsingDocuments:Promise<any>[]=[];
 		let cancelled = false;
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
@@ -96,7 +94,9 @@ export function activate(context: vscode.ExtensionContext) {
 						let filename = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
 						progress.report({message: filename});
 						await wait();
-						skosParser.parseTextDocument(d).then(async newsss => {
+						let p = skosParser.parseTextDocument(d);
+						parsingDocuments.push(p);
+						p.then(async newsss => {
 							if (!newsss) {					
 								if (!inputThroughTyping) {
 									vscode.window.showInformationMessage(d.uri.fsPath + " is not well formatted.");
@@ -105,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
 							else {
 								allSkosSubjects[d.uri.path] = newsss;
 							}
-							updateConcepts.conceptsToUpdate = updateConcepts.conceptsToUpdate.concat(Object.keys(newsss || {}));
+							conceptsToUpdate = conceptsToUpdate.concat(Object.keys(newsss || {}));
 							numberOfLoadedTextDocuments++;
 	
 							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
@@ -116,25 +116,32 @@ export function activate(context: vscode.ExtensionContext) {
 						loadDocument(i+1);
 					});
 				} else {
-					progress.report({ increment: 0, message: "Merging" });
-					await wait();
-					Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);
-					let mergedSkosSubjectsTemp = subjectHandler.mergeSkosSubjects(allSkosSubjects, updateConcepts);
-					Object.keys(mergedSkosSubjectsTemp).forEach(key => {
-						mergedSkosSubjects[key] = mergedSkosSubjectsTemp[key];
-					});
-					subjectHandler.updateReferences(mergedSkosSubjects);
-					progress.report({ increment: 5, message: "Tree View creation" });
-					await wait();
-					createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
-					progress.report({ increment: 5, message: "Semantic checks" });
-					await wait();
-					await semanticHandler.checkSemantics(mergedSkosSubjects,{
-						progress,ticks:20
-					});
-					progress.report({ increment: 0, message: "Done." });
-					await wait();
-					loadingPromiseResolve(mergedSkosSubjects);
+					Promise.resolve(parsingDocuments).then(async ()=>{
+						if (conceptsToUpdate.length === 0){
+							loadingPromiseResolve(mergedSkosSubjects);
+							return;
+						}
+						progress.report({ increment: 0, message: "Merging" });
+						await wait();
+						Object.keys(mergedSkosSubjects).forEach(key => delete mergedSkosSubjects[key]);
+						conceptsToUpdate = conceptsToUpdate.filter((value,index,array) => array.indexOf(value)===index);
+						let mergedSkosSubjectsTemp = subjectHandler.mergeSkosSubjects(allSkosSubjects,mergedSkosSubjects,conceptsToUpdate);
+						Object.keys(mergedSkosSubjectsTemp).forEach(key => {
+							mergedSkosSubjects[key] = mergedSkosSubjectsTemp[key];
+						});
+						subjectHandler.updateReferences(mergedSkosSubjects);
+						progress.report({ increment: 5, message: "Tree View creation" });
+						await wait();
+						createTreeviewContent(skosOutlineProvider,mergedSkosSubjects);
+						progress.report({ increment: 5, message: "Semantic checks" });
+						await wait();
+						await semanticHandler.checkSemantics(mergedSkosSubjects,{
+							progress,ticks:20
+						});
+						progress.report({ increment: 0, message: "Done." });
+						await wait();
+						loadingPromiseResolve(mergedSkosSubjects);
+					});					
 				}
 			};
 			loadDocument(0);
@@ -171,13 +178,14 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}
 	let inputDelay:NodeJS.Timeout;
+	let parseDelay:number = <number>vscode.workspace.getConfiguration().get("skos-ttl-editor.parsingAndVerificationDelayAfterUserInput");
 	vscode.workspace.onDidChangeTextDocument(changeEvent => {
 		if (inputDelay){
 			clearTimeout(inputDelay);
 		}
 		inputDelay = setTimeout(()=>{
 			loadTextDocumentsAfterTextDocumentChange(changeEvent);
-		},500);
+		},parseDelay);
 	});	
 
 	vscode.window.onDidChangeTextEditorSelection((selection)=>{
@@ -327,7 +335,7 @@ class ConceptHoverProvider implements vscode.HoverProvider {
 				if (items.length>0) {
 					resolve(new vscode.Hover(sss[items[0]].description));
 				} else {
-					resolve(new vscode.Hover(""));
+					resolve(undefined);
 				}
 			});
 		});
