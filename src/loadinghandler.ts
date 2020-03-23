@@ -12,45 +12,51 @@ export class LoadingHandler {
 	skosOutlineProvider:SkosOutlineProvider;
 	documentHandler:DocumentHandler;
 	mergedSkosResources: { [id: string] : SkosResource; };
-	allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
+	allSkosResources: { [id: string] : { [id: string] : SkosResource; }} = {};
     constructor(options:{
         mergedSkosResources: { [id: string] : SkosResource; },
-		allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }},
+		allSkosResources: { [id: string] : { [id: string] : SkosResource; }},
 		skosOutlineProvider:SkosOutlineProvider,
-		skosResourceHandler?:SkosResourceHandler,
+		skosResourceHandler:SkosResourceHandler,
 		skosParser?:SkosParser,
 		semanticHandler?:SemanticHandler,
 		documentHandler?:DocumentHandler,
 	}){
-        this.skosResourceHandler=options.skosResourceHandler||new SkosResourceHandler();
-        this.skosParser=options.skosParser||new SkosParser();
+        this.skosResourceHandler=options.skosResourceHandler;
+        this.skosParser=options.skosParser||new SkosParser(options.skosResourceHandler);
 		this.semanticHandler=options.semanticHandler||new SemanticHandler();
         this.skosOutlineProvider=options.skosOutlineProvider;
 		this.mergedSkosResources = options.mergedSkosResources;
-		this.allSkosSubjects = options.allSkosSubjects;
+		this.allSkosResources = options.allSkosResources;
 		this.documentHandler=options.documentHandler||new DocumentHandler({
 			mergedSkosResources: this.mergedSkosResources,
 			skosParser: this.skosParser,
 			skosResourceHandler: this.skosResourceHandler
 		});
-    }
+	}
+	
     wait = async () => await new Promise((resolve) => { setTimeout(() => { resolve(); }, 0); });
-	loadTextDocuments(documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],inputThroughTyping:boolean=true):Promise<any>{
+	loadTextDocuments(options:{
+		documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],
+		inputThroughTyping?:boolean,
+		affectedResources?: SkosResource[]
+	}):Promise<any>{
+		let inputThroughTyping = options.inputThroughTyping !== undefined ? options.inputThroughTyping : true;
 		let loadingPromiseResolve:(value:{ [id: string] : SkosResource; })=>void;
 		let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
 			loadingPromiseResolve = resolve;			
 		});	
-		this.semanticHandler.reset();
-		let numberOfDocuments:number = documents.length;
+		if (!options.affectedResources){this.semanticHandler.reset();}
+		let numberOfDocuments:number = options.documents.length;
 		let numberOfLoadedTextDocuments = 0;
-		let conceptsToUpdate: string[]=[];
+		let conceptsToUpdate = options.affectedResources || [];
 
 		let loadprogress = 0;
 		let parsingDocuments:Promise<any>[]=[];
 		let cancelled = false;
 		vscode.window.withProgress({
 			location: vscode.ProgressLocation.Notification,
-			title: "Loading "+documents.length+" document(s)",
+			title: "Loading "+options.documents.length+" document(s)",
 			cancellable: true
 		}, async (progress, token) => {
 			token.onCancellationRequested(()=>{
@@ -59,12 +65,48 @@ export class LoadingHandler {
 			let loadDocument = async (i:number)=>{
 				if (cancelled) {return;}
 				if (i < numberOfDocuments){
-					if (!documents[i]){return;}
-					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>documents[i]).then(async d => {
+					if (!options.documents[i]){return;}
+					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>options.documents[i]).then(async d => {
 						let filename = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
 						progress.report({message: filename});
 						await this.wait();
-						let p = this.skosParser.parseTextDocument(d);
+						let ranges = options.affectedResources?.map(r => r.occurances)
+							.reduce((prev,curr)=>prev=prev.concat(curr),[])
+							.filter(occ => occ.location.uri.fsPath === d.uri.fsPath)
+							.map(occ => occ.location.range)
+							.sort((a,b)=>{
+								if (a.start.line < b.start.line){
+									return -1;
+								} else if (a.start.line > b.start.line){
+									return 1;
+								} else if (a.start.character < b.start.character){
+									return -1;
+								} else if (a.start.character > b.start.character){
+									return 1;
+								} else if (a.end.line < b.end.line){
+									return -1;
+								} else if (a.end.line > b.end.line){
+									return 1;
+								} else if (a.end.character < b.end.character){
+									return -1;
+								} else if (a.end.character > b.end.character){
+									return 1;
+								} else {
+									return 0;
+								}
+							});
+						if (ranges){
+							for (let i = ranges.length-1; i > 0; i--){
+								if (ranges[i-1].end.line === ranges[i].start.line && ranges[i-1].end.character === ranges[i].start.character) {
+									ranges[i-1] = new vscode.Range(ranges[i-1].start,ranges[i].end);
+									ranges.splice(i,1);
+								}
+							}
+						}
+						let p = this.skosParser.parseTextDocument(
+							d,
+							ranges
+						);
 						parsingDocuments.push(p);
 						p.then(async newsss => {
 							if (!newsss) {					
@@ -73,9 +115,18 @@ export class LoadingHandler {
 								}
 							}
 							else {
-								this.allSkosSubjects[d.uri.path] = newsss;
+								if (options.affectedResources){
+									options.affectedResources.forEach(r => {
+										delete this.allSkosResources[d.uri.path][r.concept.text];
+									});
+									Object.keys(newsss).forEach(key => {
+										this.allSkosResources[d.uri.path][key]=newsss[key];
+									});
+								} else {
+									this.allSkosResources[d.uri.path] = newsss;
+									conceptsToUpdate = conceptsToUpdate.concat(Object.keys(newsss).map(key => newsss[key]));
+								}
 							}
-							conceptsToUpdate = conceptsToUpdate.concat(Object.keys(newsss || {}));
 							numberOfLoadedTextDocuments++;
 	
 							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
@@ -95,7 +146,7 @@ export class LoadingHandler {
 						await this.wait();
 						Object.keys(this.mergedSkosResources).forEach(key => delete this.mergedSkosResources[key]);
 						conceptsToUpdate = conceptsToUpdate.filter((value,index,array) => array.indexOf(value)===index);
-						let mergedSkosSubjectsTemp = this.skosResourceHandler.mergeSkosSubjects(this.allSkosSubjects,this.mergedSkosResources,conceptsToUpdate);
+						let mergedSkosSubjectsTemp = this.skosResourceHandler.mergeSkosResources(conceptsToUpdate);
 						Object.keys(mergedSkosSubjectsTemp).forEach(key => {
 							this.mergedSkosResources[key] = mergedSkosSubjectsTemp[key];
 						});
@@ -107,7 +158,7 @@ export class LoadingHandler {
 						await this.wait();
 						await this.semanticHandler.checkSemantics(this.mergedSkosResources,{
 							progress,ticks:20
-						});
+						},conceptsToUpdate);
 						progress.report({ increment: 0, message: "Done." });
 						await this.wait();
 						loadingPromiseResolve(this.mergedSkosResources);
@@ -127,20 +178,24 @@ export class LoadingHandler {
 	loadTextDocumentsAfterTextDocumentChange(changeEvents: vscode.TextDocumentChangeEvent[]){
 		if (this.loadDocumentsPromiseFinished){
 			this.loadDocumentsPromiseFinished = false;
-			let affectedResourcesAndLocationHulls = this.documentHandler.getAffectedResourcesAndLocationHullsByDocumentAndRange(
+			let affectedResources = this.documentHandler.getAffectedResourcesByDocumentAndRange(
 				changeEvents.map(ce => {
 					return ce.contentChanges.map(cc => {return {document: ce.document, range: cc.range};});
 				}).reduce((prev,curr)=>prev=prev.concat(curr),[])
 			);
-			this.onDidChangeTextDocumentLock = this.loadTextDocuments([vscode.window.activeTextEditor?.document]);
+			this.skosResourceHandler.adjustLocations(changeEvents);
+			this.onDidChangeTextDocumentLock = this.loadTextDocuments({
+				documents:[vscode.window.activeTextEditor?.document],
+				affectedResources
+			});
 			this.onDidChangeTextDocumentLock.then(()=>{
 				this.loadDocumentsPromiseFinished=true;
 				if (this.queuedChangeEvents){
 					this.loadTextDocumentsAfterTextDocumentChange(this.queuedChangeEvents);
 					this.queuedChangeEvents = undefined;
 				}
-				else if (affectedResourcesAndLocationHulls.resources.length>0) {
-					this.skosOutlineProvider.selectTreeItem(affectedResourcesAndLocationHulls.resources[0].treeviewNodes[0]); 
+				else if (affectedResources.length>0) {
+					this.skosOutlineProvider.selectTreeItem(affectedResources[0].treeviewNodes[0]); 
 				}
 			});
 		}

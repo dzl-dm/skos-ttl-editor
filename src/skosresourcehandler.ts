@@ -2,7 +2,17 @@ import * as vscode from 'vscode';
 import { SkosNode } from './skosnode';
 import { LocatedText, LocatedPredicateObject, iridefs, LocatedSubject } from './parser';
 
-export class SkosResourceHandler {     
+export class SkosResourceHandler {   
+    mergedSkosResources:{ [id: string] : SkosResource; };
+    allSkosResources:{[id:string]:{ [id: string] : SkosResource; }};
+    constructor(options:{
+        mergedSkosResources:{ [id: string] : SkosResource; },
+        allSkosResources:{[id:string]:{ [id: string] : SkosResource; }}
+    }){
+        this.mergedSkosResources = options.mergedSkosResources;
+        this.allSkosResources = options.allSkosResources;
+    }
+    
     getEmptySkosSubject(concept:LocatedSubject):SkosResource{
         return {
             concept:concept,
@@ -68,13 +78,16 @@ export class SkosResourceHandler {
             getStatementsByPredicate(iridefs.topConceptOf,ti).forEach(tc => {
                 sss[tc.object.text].statements.push({
                     location:tc.location,
+                    documentOffset:tc.documentOffset,
                     text:tc.text,
                     predicate:{
                         location:tc.predicate.location,
-                        text:iridefs.conceptScheme,
+                        documentOffset:tc.predicate.documentOffset,
+                        text:iridefs.conceptScheme
                     },
                     object:{
                         location:tc.object.location,
+                        documentOffset:tc.object.documentOffset,
                         text:ti.concept.text
                     }
                 });
@@ -147,18 +160,15 @@ export class SkosResourceHandler {
         });	
         return result;
     }   
-    mergeSkosSubjects(allSkosSubjects:{[id:string]:{ [id: string] : SkosResource; }},
-                mergedSkosResources: { [id: string] : SkosResource; },
-                conceptsToUpdate: string[]
-        ):{ [id: string] : SkosResource; }{
+    mergeSkosResources(conceptsToUpdate: SkosResource[]):{ [id: string] : SkosResource; }{
         let sss:{ [id: string] : SkosResource; }={};
-        Object.keys(allSkosSubjects).forEach(filename => {
-            Object.keys(allSkosSubjects[filename]).forEach(subjectname => {
-                if (!conceptsToUpdate.includes(subjectname) && Object.keys(mergedSkosResources).includes(subjectname)){
-                    sss[subjectname] = mergedSkosResources[subjectname];
+        Object.keys(this.allSkosResources).forEach(filename => {
+            Object.keys(this.allSkosResources[filename]).forEach(subjectname => {
+                if (!conceptsToUpdate.map(c => c.concept.text).includes(subjectname) && Object.keys(this.mergedSkosResources).includes(subjectname)){
+                    sss[subjectname] = this.mergedSkosResources[subjectname];
                 }
                 else {
-                    let ss = allSkosSubjects[filename][subjectname];
+                    let ss = this.allSkosResources[filename][subjectname];
                     if (!sss[subjectname]){
                         sss[subjectname] = this.getEmptySkosSubject(ss.concept);
                     }
@@ -210,6 +220,51 @@ export class SkosResourceHandler {
         let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept,iridefs.inScheme];
         return s.statements.filter(x => hierarchyReferences.includes(x.predicate.text));
     }
+
+    adjustLocations(changeEvents: vscode.TextDocumentChangeEvent[]){
+        let locationsAndOffsets:{
+            location:vscode.Location,
+            documentOffset:{
+                start:number;
+                end:number;
+            },
+        }[]=[];
+        Object.keys(this.mergedSkosResources).map(key => this.mergedSkosResources[key]).forEach(r => {
+            if (r.concept.locations){
+                locationsAndOffsets.push(...r.concept.locations);
+            }
+            r.statements.forEach(s => {
+                locationsAndOffsets.push({location:s.location,documentOffset:s.documentOffset});
+                locationsAndOffsets.push({location:s.object.location,documentOffset:s.object.documentOffset});
+                locationsAndOffsets.push({location:s.predicate.location,documentOffset:s.predicate.documentOffset});
+            });
+            locationsAndOffsets.push(...r.occurances.map(o => { return {location:o.location,documentOffset:o.documentOffset};}));
+        });
+        locationsAndOffsets.forEach(lo => {
+            changeEvents.forEach(ce => {
+                let document = ce.document;
+                if (document.uri.fsPath !== lo.location.uri.fsPath){return;}
+                ce.contentChanges.forEach(cc => {
+                    if (lo.documentOffset.start>=cc.rangeOffset){
+                        let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.start)-cc.rangeOffset;
+                        lo.location.range = new vscode.Range(
+                            document.positionAt(lo.documentOffset.start-substraction+cc.text.length),
+                            lo.location.range.end
+                        );
+                        lo.documentOffset.start=document.offsetAt(lo.location.range.start);
+                    }
+                    if (lo.documentOffset.end>=cc.rangeOffset){
+                        let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.end)-cc.rangeOffset;
+                        lo.location.range = new vscode.Range(
+                            lo.location.range.start,
+                            document.positionAt(lo.documentOffset.end-substraction+cc.text.length)
+                        );
+                        lo.documentOffset.end=document.offsetAt(lo.location.range.end);
+                    }
+                });
+            });
+        });
+    }
 }
 
 export function getStatementsByPredicate(predicate:string|string[],s:SkosResource):LocatedPredicateObject[]{
@@ -236,7 +291,11 @@ export interface SkosResource {
 	description:vscode.MarkdownString;
 	treeviewNodes:SkosNode[];
 	occurances:{
-		location:vscode.Location,
+        location:vscode.Location,
+        documentOffset:{
+            start:number;
+            end:number;
+        },
 		statement:string
     }[];
     icon?:string;

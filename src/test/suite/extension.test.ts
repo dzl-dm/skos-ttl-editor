@@ -6,13 +6,14 @@ import * as vscode from 'vscode';
 import * as extension from '../../extension';
 import * as documenthandler from '../../documenthandler';
 import * as path from 'path';
+import { SkosResourceHandler } from '../../skosresourcehandler';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
 
 	test('Hover provider test', async () => {
 		let uri = vscode.Uri.file(path.join(__dirname,'../../../src/test/test.ttl'));
-		await new documenthandler.DocumentHandler({}).selectSingleTextSnippet(
+		await new documenthandler.DocumentHandler({skosResourceHandler:new SkosResourceHandler({allSkosResources:{},mergedSkosResources:{}})}).selectSingleTextSnippet(
 			new vscode.Location(
 				uri,
 				new vscode.Range(

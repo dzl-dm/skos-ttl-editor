@@ -4,17 +4,20 @@ import * as vscode from 'vscode';
 import * as parser from '../../parser';
 import * as documenthandler from '../../documenthandler';
 import * as subjecthandler from '../../skosresourcehandler';
+import * as resourceHandler from '../../skosresourcehandler';
 import * as path from 'path';
 import { SemanticHandler } from '../../semantichandler';
 
 suite('Parser Test Suite', () => {
     vscode.window.showInformationMessage('Start all tests.');
 
+    let skosResourceHandler = new resourceHandler.SkosResourceHandler({mergedSkosResources:{},allSkosResources:{}});
+
     let uri = vscode.Uri.file(path.join(__dirname,'../../../src/test/test.ttl'));
 
     test('Hierarchy diagnostic test', async () => {
-        await new documenthandler.DocumentHandler({}).openTextDocument(uri).then(doc => {
-            new parser.SkosParser().parseTextDocument(doc).then(sss => {
+        await new documenthandler.DocumentHandler({skosResourceHandler}).openTextDocument(uri).then(doc => {
+            new parser.SkosParser(skosResourceHandler).parseTextDocument(doc).then(sss => {
                 if (!sss){return;}
                 let semantichandler = new SemanticHandler();
                 semantichandler.checkSemantics(sss);

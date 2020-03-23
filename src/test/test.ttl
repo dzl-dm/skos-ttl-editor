@@ -13,7 +13,7 @@
 
 
 :TestResource1 a skos:Concept ;
-	skos:prefLabel "Test Resource 1"@en ;
+	skos:prefLabel "Test Resource 1"@en ; #a. comment.
 .
 
 :TestResource11 a skos:Concept ;

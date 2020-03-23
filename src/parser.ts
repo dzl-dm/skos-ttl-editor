@@ -2,33 +2,22 @@ import * as vscode from 'vscode';
 import { SkosResource, SkosResourceHandler } from './skosresourcehandler';
 
 export class SkosParser {
-    subjectHandler:SkosResourceHandler;
-    constructor(subjectHandler?:SkosResourceHandler){
-        this.subjectHandler=subjectHandler||new SkosResourceHandler();
+    skosResourceHandler:SkosResourceHandler;
+    constructor(skosResourceHandler:SkosResourceHandler){
+        this.skosResourceHandler=skosResourceHandler;
     }
 
     prefixes:{[id:string]:Prefix[]}={};
 
-    async parseTextDocument(document:vscode.TextDocument|undefined): Promise<{
+    async parseTextDocument(document:vscode.TextDocument|undefined, ranges?:vscode.Range[]): Promise<{
         [id: string]: SkosResource;
     } | undefined> {
         if (!document){
             return undefined;
         }
-        let text = document.getText();
-        let resttext = this.removeComments(text);
+        let statements = this.getStatements(document,ranges);
+        this.setPrefixes(document,this.removeComments(document.getText()).text);
     
-        /* Causes stack overflow for large documents.
-        let turtledoc_match = new RegExp(turtleDoc);
-        let match = turtledoc_match.exec(resttext);
-        if (!(match && match[0] === resttext)){
-            let notmatching = match && resttext.substr(match[0].length) || "";
-            console.log("Not matching: " + notmatching);
-            return undefined;
-        }*/
-    
-        this.setPrefixes(document,resttext);
-        let statements = this.getStatements(document,resttext);
         if (statements === undefined){
             return undefined;
         }
@@ -83,44 +72,86 @@ export class SkosParser {
         this.prefixes[document.uri.fsPath] = result;
     }
 
-    private removeComments(s:string):string{
-        let raute = new RegExp("(?:("+IRIREF+"|"+Sstring+")|\\#[^\\n]*)","g");
-        return s.replace(raute, "$1");
+    private removeComments(s:string):{
+        text: string,
+        comment_offsets: {
+            start: number,
+            end: number
+        }[]
+    }{
+        let raute = new RegExp("(?:("+IRIREF+"|"+Sstring+")|(\\#[^\\n]*))","g");
+        let resulttext = "";
+        let result_comment_offsets:{
+            start: number,
+            end: number
+        }[] = [];
+        let match;
+        let lastindex = 0;
+        while(match = raute.exec(s)){
+            resulttext += s.substring(lastindex,match.index);
+            if (match[1]){
+                resulttext += match[1];
+            }
+            lastindex=match.index+match[0].length;
+            if (match[2]){
+                result_comment_offsets.push({start:match.index,end:lastindex});
+            }
+        }
+        resulttext+=s.substr(lastindex);
+        return {
+            text:resulttext,
+            comment_offsets: result_comment_offsets
+        };
     }
 
-    private getStatements(document:vscode.TextDocument,s:string):LocatedText[]|undefined{
+    private getStatements(document:vscode.TextDocument,ranges?:vscode.Range[]):LocatedText[]{
         let result:LocatedText[]=[];
         let tempmatch;
         let triples_match = new RegExp(triples,"g");
 
-        let locatedDocumentText:LocatedText = {
-            location: new vscode.Location(
-                document.uri,
-                new vscode.Range(
-                    new vscode.Position(0,0),
-                    new vscode.Position(document.lineCount-1,document.lineAt(document.lineCount-1).range.end.character)
-                )
-            ),
-            text:s
-        };
-        
-        while (tempmatch = triples_match.exec(s)){    
-            //extend statement location till next dot
-            let textBeforeDot = s.substring(tempmatch.index+tempmatch[0].length,s.indexOf(".",tempmatch.index+tempmatch[0].length));
-            let linesplit = textBeforeDot.split(/\r\n|\r|\n/);
-            let location = this.getLocationOfMatchWithinLocatedText(locatedDocumentText,tempmatch);
-            location = new vscode.Location(location.uri,new vscode.Range(
-                location.range.start,
-                new vscode.Position(
-                    location.range.end.line+linesplit.length-1,
-                    linesplit.length===1 ? location.range.end.character+linesplit[0].length : linesplit[linesplit.length-1].length
-                )
-            ));
-            result.push({
-                location:location,
-                text:tempmatch[0]
-            });
+        if (!ranges){
+            ranges = [new vscode.Range(
+                new vscode.Position(0,0),
+                new vscode.Position(document.lineCount-1,document.lineAt(document.lineCount-1).range.end.character)
+            )];
         }
+
+        ranges.forEach(range => {
+            let s = document.getText(range);
+            let comment_removal = this.removeComments(s);
+            let range_offset = document.offsetAt(range.start);
+            while (tempmatch = triples_match.exec(comment_removal.text)){    
+                //get offsets in text with removed comments
+                let dot_offset = comment_removal.text.indexOf(".",tempmatch.index+tempmatch[0].length);
+                if (dot_offset === -1){ dot_offset = tempmatch.index+tempmatch[0].length; }
+                let start_offset = range_offset+tempmatch.index;
+                let end_offset = range_offset+dot_offset;
+                //adding all comment lengths to get the real offsets
+                for (let i = 0; i < comment_removal.comment_offsets.length; i++){
+                    if (comment_removal.comment_offsets[i].start < start_offset){
+                        start_offset += comment_removal.comment_offsets[i].end - comment_removal.comment_offsets[i].start;
+                    }
+                    if (comment_removal.comment_offsets[i].start < end_offset){
+                        end_offset += comment_removal.comment_offsets[i].end - comment_removal.comment_offsets[i].start;
+                    }
+                }
+                let match_range = new vscode.Range(
+                    document.positionAt(start_offset),
+                    document.positionAt(end_offset)
+                );
+                let location = new vscode.Location(document.uri,match_range);
+                result.push({
+                    location:location,
+                    documentOffset:{
+                        start: start_offset,
+                        end: end_offset
+                    },
+                    text:tempmatch[0]
+                });
+                
+            }
+        });
+
         return result;
     }
 
@@ -227,18 +258,29 @@ export class SkosParser {
                 }
     
                 if (!sss[s]){
-                    sss[s] = this.subjectHandler.getEmptySkosSubject({
+                    sss[s] = this.skosResourceHandler.getEmptySkosSubject({
                         text: s,
                         locations: []
                     });
                 }
-                sss[s].concept.locations?.push(this.getLocationOfMatchWithinLocatedText(sm,s));
+                let conceptLocation = this.getLocationOfMatchWithinLocatedText(sm,s);
+                sss[s].concept.locations?.push({
+                    location:conceptLocation,
+                    documentOffset: {
+                        start: document.offsetAt(conceptLocation.range.start),
+                        end: document.offsetAt(conceptLocation.range.end)
+                    },
+                });
                 let location = new vscode.Location(
                     document.uri,
                     sm.location.range
                 );
                 sss[s].occurances.push({
                     location: location,
+                    documentOffset: {
+                        start: document.offsetAt(location.range.start),
+                        end: document.offsetAt(location.range.end)
+                    },
                     statement: match
                 });
                 let offset = match_subject[0].length;
@@ -253,18 +295,44 @@ export class SkosParser {
                         lang = match_object.groups && match_object.groups["lang"];
     
                         let po_location = this.getLocationOfMatchWithinLocatedText(sm,match_po,offset);
-                        let predicateLocation = this.getLocationOfMatchWithinLocatedText({location:po_location,text:match_po[0]},p);
-                        let objectLocation = this.getLocationOfMatchWithinLocatedText({location:po_location,text:match_po[0]},o); 
+                        let predicateLocation = this.getLocationOfMatchWithinLocatedText({
+                            location:po_location,
+                            documentOffset:{
+                                start: document.offsetAt(po_location.range.start),
+                                end: document.offsetAt(po_location.range.end)
+                            },
+                            text:match_po[0]
+                        },p);
+                        let objectLocation = this.getLocationOfMatchWithinLocatedText({
+                            location:po_location,
+                            documentOffset:{
+                                start: document.offsetAt(po_location.range.start),
+                                end: document.offsetAt(po_location.range.end)
+                            },
+                            text:match_po[0]
+                        },o); 
 
                         sss[s].statements.push({
                             location: po_location,
+                            documentOffset:{
+                                start: document.offsetAt(po_location.range.start),
+                                end: document.offsetAt(po_location.range.end)
+                            },
                             text: match_po[0],
                             predicate: {
                                 location: predicateLocation,
+                                documentOffset:{
+                                    start: document.offsetAt(predicateLocation.range.start),
+                                    end: document.offsetAt(predicateLocation.range.end)
+                                },
                                 text: this.resolvePrefix(p,prefixes)||p
                             },
                             object: {
                                 location: objectLocation,
+                                documentOffset:{
+                                    start: document.offsetAt(objectLocation.range.start),
+                                    end: document.offsetAt(objectLocation.range.end)
+                                },
                                 text: this.resolvePrefix(o,prefixes)||o,
                                 lang: lang,
                                 literal: literal
@@ -366,27 +434,30 @@ export const iridefs = {
 
 export interface LocatedText {
     location:vscode.Location;
+    documentOffset:{
+        start:number;
+        end:number;
+    };
     text:string; 
 }
 
 export interface LocatedSubject {
-    locations?:vscode.Location[];
+    locations?:{
+        location:vscode.Location;        
+        documentOffset:{
+            start:number;
+            end:number;
+        };
+    }[];
     text:string;
 }
 
 export interface LocatedPredicateObject extends LocatedText {
-    predicate: LocatedPredicate;
+    predicate: LocatedText;
     object: LocatedObject;
 }
 
-export interface LocatedPredicate extends LocatedText {
-    location:vscode.Location;
-    text:string;
-}
-
 export interface LocatedObject extends LocatedText {
-    location:vscode.Location;
-    text:string;
     literal?:string;
     lang?:string;
     type?:string;

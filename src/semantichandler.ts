@@ -15,14 +15,60 @@ export class SemanticHandler {
         this.diagnostics={};
     }
 
-    private addDiagnostic(location:vscode.Location,severity:vscode.DiagnosticSeverity,message:string){
+    private addDiagnostic(location:vscode.Location,severity:vscode.DiagnosticSeverity,message:string,related?:{
+        location:vscode.Location,
+        id:string
+    }[]){
         if (!this.uris.includes(location.uri)){
             this.uris.push(location.uri);
             this.diagnostics[location.uri.fsPath]=[];
         }
-        this.diagnostics[location.uri.fsPath].push(new vscode.Diagnostic(location.range, message, severity));
+        let dIndex = this.diagnostics[location.uri.fsPath].push(new vscode.Diagnostic(location.range, message, severity));
+        if (related){
+            this.diagnostics[location.uri.fsPath][dIndex-1].relatedInformation = related.map(r => {
+                return new vscode.DiagnosticRelatedInformation(r.location,r.id);
+            });
+        }
         this.uris.forEach(uri => {
             this.diagnosticCollection.set(uri, this.diagnostics[uri.fsPath]);
+        });
+    }
+
+    private removeDiagnostics(resources:SkosResource[]){
+        resources.forEach(r => {
+            r.occurances.forEach(occ => {
+                let ds = this.diagnostics[occ.location.uri.fsPath];
+                if (!ds){return;}
+                for (let i = ds.length-1;i>=0;i--){
+                    let d = ds[i];
+                    if (occ.location.range.contains(d.range)){
+                        ds.splice(i,1);
+                    }
+                }
+            });
+        });
+        this.uris.forEach(uri => {
+            this.diagnosticCollection.set(uri, this.diagnostics[uri.fsPath]);
+        });
+    }
+
+    private appendDiagnosticRelatedResources(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate:SkosResource[]){
+        conceptsToUpdate.forEach(r => {
+            r.occurances.forEach(occ => {
+                let ds = this.diagnostics[occ.location.uri.fsPath];
+                if (!ds){return;}
+                for (let i = ds.length-1;i>=0;i--){
+                    let d = ds[i];
+                    if (occ.location.range.contains(d.range) && d.relatedInformation) {
+                        for (let j = 0; j < d.relatedInformation.length; j++){
+                            if (!conceptsToUpdate.map(x => x.concept.text).includes(d.relatedInformation[j].message)
+                             && mergedSkosSubjects[d.relatedInformation[j].message]){
+                                conceptsToUpdate.push(mergedSkosSubjects[d.relatedInformation[j].message]);
+                            }
+                        }
+                    }
+                }
+            });
         });
     }
 
@@ -33,7 +79,11 @@ export class SemanticHandler {
             increment?: number | undefined;
         }>,
         ticks:number
-    }){
+    },conceptsToUpdate?:SkosResource[]){
+        if (conceptsToUpdate){
+            this.appendDiagnosticRelatedResources(mergedSkosSubjects,conceptsToUpdate);
+            this.removeDiagnostics(conceptsToUpdate);
+        }
         withprogress?.progress.report({ increment: 0, message: "Semantic checks (type)" });
         await this.wait();
         this.typeCheck(mergedSkosSubjects);
@@ -51,8 +101,9 @@ export class SemanticHandler {
         this.recursionCheck(mergedSkosSubjects);
     }
 
-    private typeCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+    private typeCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
         Object.keys(mergedSkosSubjects).forEach(key => {
+            if (conceptsToUpdate && !conceptsToUpdate.map(x => x.concept.text).includes(key)){return;}
             let s = mergedSkosSubjects[key];
             let probablySkosResource = s.statements.filter(statement => statement.predicate.text.startsWith(iridefs.skosBase.substring(0,iridefs.skosBase.length-1))).length > 0;
 
@@ -73,8 +124,9 @@ export class SemanticHandler {
         });
     }
 
-    private labelCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+    private labelCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
         Object.keys(mergedSkosSubjects).forEach(key => {
+            if (conceptsToUpdate && !conceptsToUpdate.map(x => x.concept.text).includes(key)){return;}
             let s = mergedSkosSubjects[key];
             let probablySkosResource = s.statements.filter(statement => statement.predicate.text.startsWith(iridefs.skosBase.substring(0,iridefs.skosBase.length-1))).length > 0;
             if (probablySkosResource) {
@@ -96,13 +148,14 @@ export class SemanticHandler {
         });
     }
 
-    private prefixCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+    private prefixCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
         Object.keys(mergedSkosSubjects).forEach(key => {
+            if (conceptsToUpdate && !conceptsToUpdate.map(x => x.concept.text).includes(key)){return;}
             let s = mergedSkosSubjects[key];
             let regex = new RegExp("^"+IRIREF+"$");
             if (!s.concept.text.startsWith("_BLANK")&&!regex.exec(s.concept.text)){
                 s.concept.locations?.forEach(l => {
-                    this.addDiagnostic(l,vscode.DiagnosticSeverity.Error,"Prefix not found for '"+s.concept.text+"'.");
+                    this.addDiagnostic(l.location,vscode.DiagnosticSeverity.Error,"Prefix not found for '"+s.concept.text+"'.");
                 });
             }
             s.statements.forEach(s => {
@@ -116,8 +169,9 @@ export class SemanticHandler {
         });
     }
 
-    private duplicateCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+    private duplicateCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
         Object.keys(mergedSkosSubjects).forEach(key => {
+            if (conceptsToUpdate && !conceptsToUpdate.map(x => x.concept.text).includes(key)){return;}
             let s = mergedSkosSubjects[key];
             let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).filter(x => x === value.predicate.text + " " + value.object.text).length > 1);
             duplicates.forEach(d => {
@@ -126,9 +180,10 @@ export class SemanticHandler {
         });
     }
 
-    private recursionCheck(mergedSkosSubjects: { [id: string]: SkosResource; }){
+    private recursionCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
         this.checkedResources=[];
         Object.keys(mergedSkosSubjects).forEach(key => {
+            if (conceptsToUpdate && !conceptsToUpdate.map(x => x.concept.text).includes(key)){return;}
             let s = mergedSkosSubjects[key];
             this.loops = [];
             this.getAncestorLoops(s,mergedSkosSubjects);
@@ -140,7 +195,17 @@ export class SemanticHandler {
                         && d.range.end.line === a.statement.location.range.end.line
                         && d.range.end.character === a.statement.location.range.end.character
                     ).length === 0){
-                        this.addDiagnostic(a.statement.location,vscode.DiagnosticSeverity.Error,"Hierarchical recursion: "+loop.map(a => a.resource.concept.text).join(","));
+                        this.addDiagnostic(
+                            a.statement.location,
+                            vscode.DiagnosticSeverity.Error,
+                            "Hierarchical recursion:",
+                            loop.map(l => {
+                                return {
+                                    location:l.statement.location,
+                                    id:l.resource.concept.text
+                                };
+                            })
+                        );
                     }                    
                 });
             });

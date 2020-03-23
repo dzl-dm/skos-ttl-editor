@@ -9,9 +9,9 @@ import { SemanticHandler } from './semantichandler';
 import { LoadingHandler } from './loadinghandler';
 
 
-let allSkosSubjects: { [id: string] : { [id: string] : SkosResource; }} = {};
+let allSkosResources: { [id: string] : { [id: string] : SkosResource; }} = {};
 const mergedSkosResources: { [id: string] : SkosResource; } = {};
-let skosResourceHandler = new SkosResourceHandler();
+let skosResourceHandler = new SkosResourceHandler({mergedSkosResources,allSkosResources});
 let skosParser = new SkosParser(skosResourceHandler);
 let documentHandler = new DocumentHandler({
 	mergedSkosResources,
@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 		skosParser,
 		skosOutlineProvider,
 		documentHandler,
-		allSkosSubjects
+		allSkosResources
 	});
 
 	vscode.commands.registerCommand('skos-ttl-editor.addConcept', (node:SkosNode) => {
@@ -82,7 +82,10 @@ export function activate(context: vscode.ExtensionContext) {
 		selectTextSnippet(node);
 	});
 
-	let initialLoadingPromise = loadingHandler.loadTextDocuments([vscode.window.activeTextEditor?.document],false);
+	let initialLoadingPromise = loadingHandler.loadTextDocuments({
+		documents:[vscode.window.activeTextEditor?.document],
+		inputThroughTyping: false
+	});
 	
 	let inputDelay:NodeJS.Timeout;
 	let changeEvents:vscode.TextDocumentChangeEvent[]=[];
@@ -96,13 +99,14 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 		inputDelay = setTimeout(()=>{
 			loadingHandler.loadTextDocumentsAfterTextDocumentChange(changeEvents);
+			changeEvents = [];
 		},parseDelay);
 	});	
 
 	vscode.window.onDidChangeTextEditorSelection((selection)=>{
 		if (!loadingHandler.queuedChangeEvents){
 			if (selection.kind !== vscode.TextEditorSelectionChangeKind.Mouse) { return; }
-			let selectedConcepts = documentHandler.getAffectedResourcesAndLocationHullsByDocumentAndRange([{document: selection.textEditor.document,range: selection.selections[0]}]).resources;
+			let selectedConcepts = documentHandler.getAffectedResourcesByDocumentAndRange([{document: selection.textEditor.document,range: selection.selections[0]}]);
 			if (selectedConcepts.length>0) { 
 				skosOutlineProvider.selectTreeItem(selectedConcepts[0].treeviewNodes[0]); 
 			}
@@ -111,8 +115,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	vscode.window.onDidChangeActiveTextEditor(changeEvent => {
 		if (!vscode.window.activeTextEditor){return;}
-		if (!Object.keys(allSkosSubjects).includes(vscode.window.activeTextEditor.document.uri.path)){
-			loadingHandler.loadTextDocuments([vscode.window.activeTextEditor?.document],false);
+		if (!Object.keys(allSkosResources).includes(vscode.window.activeTextEditor.document.uri.path)){
+			loadingHandler.loadTextDocuments({
+				documents:[vscode.window.activeTextEditor?.document],
+				inputThroughTyping: false
+			});
 		}
 	});
 
@@ -139,10 +146,12 @@ export function activate(context: vscode.ExtensionContext) {
 			'turtle', new ConceptReferenceProvider(mergedSkosResources)));
 
 	vscode.commands.registerCommand('skos-ttl-editor.reload', () => {
-		Object.keys(allSkosSubjects).forEach(key => delete allSkosSubjects[key]);
+		Object.keys(allSkosResources).forEach(key => delete allSkosResources[key]);
 		Object.keys(mergedSkosResources).forEach(key => delete mergedSkosResources[key]);		
 		if (vscode.window.activeTextEditor){
-			loadingHandler.loadTextDocuments([vscode.window.activeTextEditor.document]);	
+			loadingHandler.loadTextDocuments({
+				documents: [vscode.window.activeTextEditor.document]
+			});	
 		}
 	});	
 	vscode.commands.registerCommand('skos-ttl-editor.complementFiles', () => {
@@ -151,11 +160,11 @@ export function activate(context: vscode.ExtensionContext) {
 				if (files.length === 0){
 					vscode.window.showInformationMessage("No files to load. Did you open a folder in Visual Studio Code?");
 				}
-				loadingHandler.loadTextDocuments(
-					files.filter(file => !Object.keys(allSkosSubjects).includes(file.path))
+				loadingHandler.loadTextDocuments({
+					documents: files.filter(file => !Object.keys(allSkosResources).includes(file.path))
 						.map(file => vscode.workspace.openTextDocument(file.path)),
-					false
-				);
+					inputThroughTyping: false
+				});
 			});		
 		}
 	});	

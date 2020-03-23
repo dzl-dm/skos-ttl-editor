@@ -52,6 +52,7 @@ import {
         }
     }
     getTreeItem(element: SkosNode): TreeItem {
+        if (!element){return new TreeItem("<<Empty>>");}
         let treeItem = new TreeItem(element.getLabel());
         if (element.getChildren().length>0){
             treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
