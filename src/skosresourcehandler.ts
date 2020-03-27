@@ -295,8 +295,7 @@ export interface SkosResource {
         documentOffset:{
             start:number;
             end:number;
-        },
-		statement:string
+        }
     }[];
     icon?:string;
 }

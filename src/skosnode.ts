@@ -12,8 +12,7 @@ import { SkosResource } from './skosresourcehandler';
     private iconname:string|undefined;
     private types:string[]=[];
     private occurances:{
-        location:vscode.Location,
-        statement:string
+        location:vscode.Location
     }[]=[];
 
     constructor(concept:string){
@@ -27,8 +26,7 @@ import { SkosResource } from './skosresourcehandler';
         iconname?:string,
         types?:string[],
         occurances?:{
-            location:vscode.Location,
-            statement:string
+            location:vscode.Location
         }[]
     }){
         if (attributes.children) {

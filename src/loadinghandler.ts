@@ -35,7 +35,7 @@ export class LoadingHandler {
 		});
 	}
 	
-    wait = async () => await new Promise((resolve) => { setTimeout(() => { resolve(); }, 0); });
+    wait = async (ms:number) => await new Promise((resolve) => { setTimeout(() => { resolve(); }, ms); });
 	loadTextDocuments(options:{
 		documents:(vscode.TextDocument|Thenable<vscode.TextDocument>|undefined)[],
 		inputThroughTyping?:boolean,
@@ -51,6 +51,7 @@ export class LoadingHandler {
 		let numberOfLoadedTextDocuments = 0;
 		let conceptsToUpdate = options.affectedResources || [];
 
+		let filenames:string[]=[];
 		let loadprogress = 0;
 		let parsingDocuments:Promise<any>[]=[];
 		let cancelled = false;
@@ -67,9 +68,9 @@ export class LoadingHandler {
 				if (i < numberOfDocuments){
 					if (!options.documents[i]){return;}
 					Promise.resolve(<vscode.TextDocument|Thenable<vscode.TextDocument>>options.documents[i]).then(async d => {
-						let filename = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
-						progress.report({message: filename});
-						await this.wait();
+						filenames[i] = d.uri.fsPath.substr(d.uri.fsPath.lastIndexOf("\\")+1);
+						progress.report({increment:0, message: filenames[i]});
+						await this.wait(0);
 						let ranges = options.affectedResources?.map(r => r.occurances)
 							.reduce((prev,curr)=>prev=prev.concat(curr),[])
 							.filter(occ => occ.location.uri.fsPath === d.uri.fsPath)
@@ -103,11 +104,21 @@ export class LoadingHandler {
 								}
 							}
 						}
-						let p = this.skosParser.parseTextDocument(
-							d,
-							ranges
-						);
-						parsingDocuments.push(p);
+
+						//numberOfLoadedTextDocuments++;
+						let progressdiff = Math.ceil((70*(i+1))/numberOfDocuments) - loadprogress;
+						loadprogress += progressdiff;
+
+						let p = this.skosParser.parseTextDocument({
+							document: d,
+							ranges,
+							withprogress: {
+								progress,
+								ticks:progressdiff
+							}
+						});
+						let resolveReceivedResources:(value?: any) => void;
+						parsingDocuments.push(new Promise(resolve => resolveReceivedResources = resolve));
 						p.then(async newsss => {
 							if (!newsss) {					
 								if (!inputThroughTyping) {
@@ -127,23 +138,21 @@ export class LoadingHandler {
 									conceptsToUpdate = conceptsToUpdate.concat(Object.keys(newsss).map(key => newsss[key]));
 								}
 							}
-							numberOfLoadedTextDocuments++;
 	
-							let progressdiff = Math.ceil((70*numberOfLoadedTextDocuments)/numberOfDocuments) - loadprogress;
-							progress.report({ increment: progressdiff, message: filename });
-							await this.wait();
-							loadprogress += progressdiff;
+							progress.report({ message: filenames[i+1]||filenames[i] });
+
+							resolveReceivedResources();
 						});
 						loadDocument(i+1);
 					});
 				} else {
-					Promise.resolve(parsingDocuments).then(async ()=>{
+					Promise.all(parsingDocuments).then(async ()=>{
 						if (conceptsToUpdate.length === 0){
 							loadingPromiseResolve(this.mergedSkosResources);
 							return;
 						}
 						progress.report({ increment: 0, message: "Merging" });
-						await this.wait();
+						await this.wait(100);
 						Object.keys(this.mergedSkosResources).forEach(key => delete this.mergedSkosResources[key]);
 						conceptsToUpdate = conceptsToUpdate.filter((value,index,array) => array.indexOf(value)===index);
 						let mergedSkosSubjectsTemp = this.skosResourceHandler.mergeSkosResources(conceptsToUpdate);
@@ -152,15 +161,15 @@ export class LoadingHandler {
 						});
 						this.skosResourceHandler.updateReferences(this.mergedSkosResources);
 						progress.report({ increment: 5, message: "Tree View creation" });
-						await this.wait();
+						await this.wait(100);
 						this.skosOutlineProvider.createTreeviewContent();
 						progress.report({ increment: 5, message: "Semantic checks" });
-						await this.wait();
+						await this.wait(100);
 						await this.semanticHandler.checkSemantics(this.mergedSkosResources,{
 							progress,ticks:20
 						},conceptsToUpdate);
 						progress.report({ increment: 0, message: "Done." });
-						await this.wait();
+						await this.wait(0);
 						loadingPromiseResolve(this.mergedSkosResources);
 					});					
 				}

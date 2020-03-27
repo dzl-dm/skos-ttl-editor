@@ -9,20 +9,58 @@ export class SkosParser {
 
     prefixes:{[id:string]:Prefix[]}={};
 
-    async parseTextDocument(document:vscode.TextDocument|undefined, ranges?:vscode.Range[]): Promise<{
+    async parseTextDocument(options:{
+        document:vscode.TextDocument|undefined, 
+        ranges?:vscode.Range[],
+        withprogress?:{
+            progress:vscode.Progress<{
+                message?: string | undefined;
+                increment?: number | undefined;
+            }>,
+            ticks:number
+        }
+    }): Promise<{
         [id: string]: SkosResource;
     } | undefined> {
-        if (!document){
+        if (!options.document){
             return undefined;
         }
-        let statements = this.getStatements(document,ranges);
-        this.setPrefixes(document,this.removeComments(document.getText()).text);
+        let statementTicks = Math.floor((options.withprogress?.ticks||0) / 3);
+        let statementsPromise = this.getStatements({
+            document:options.document,
+            ranges: options.ranges,
+            withprogress: options.withprogress?{
+                progress: options.withprogress.progress,
+                ticks: statementTicks
+            }:undefined
+        });
+        this.setPrefixes(options.document,this.removeComments(options.document.getText()).text);
     
-        if (statements === undefined){
-            return undefined;
-        }
-        let sss = this.appendSSS(document,<LocatedText[]>statements);
-        return sss;
+        let promiseResolve:(value?: {
+            [id: string]: SkosResource;
+        } | PromiseLike<{
+            [id: string]: SkosResource;
+        } | undefined> | undefined) => void;
+        let result = new Promise<{
+            [id: string]: SkosResource;
+        } | undefined>((resolve,reject) => {
+            promiseResolve = resolve;
+        });
+
+        statementsPromise.then(statements => {
+            if (statements === undefined){
+                promiseResolve(undefined);
+            }
+            this.appendSSS({
+                document: <vscode.TextDocument>options.document,
+                sms: <LocatedText[]>statements,
+                withprogress: options.withprogress?{
+                    progress: options.withprogress.progress,
+                    ticks: options.withprogress.ticks - statementTicks
+                }:undefined
+            }).then(promiseResolve);
+        });
+        return result;
     }
 
     getPrefixes(document:vscode.TextDocument):Prefix[];
@@ -104,22 +142,37 @@ export class SkosParser {
         };
     }
 
-    private getStatements(document:vscode.TextDocument,ranges?:vscode.Range[]):LocatedText[]{
+    wait = async (ms:number) => await new Promise((resolve) => { setTimeout(() => { resolve(); }, ms); });
+    private async getStatements(options:{
+        document:vscode.TextDocument,
+        ranges?:vscode.Range[],
+        withprogress?:{
+            progress:vscode.Progress<{
+                message?: string | undefined;
+                increment?: number | undefined;
+            }>,
+            ticks:number
+        }
+    }):Promise<LocatedText[]>{         
         let result:LocatedText[]=[];
         let tempmatch;
         let triples_match = new RegExp(triples,"g");
 
-        if (!ranges){
-            ranges = [new vscode.Range(
+        if (!options.ranges){
+            options.ranges = [new vscode.Range(
                 new vscode.Position(0,0),
-                new vscode.Position(document.lineCount-1,document.lineAt(document.lineCount-1).range.end.character)
+                new vscode.Position(options.document.lineCount-1,options.document.lineAt(options.document.lineCount-1).range.end.character)
             )];
         }
 
-        ranges.forEach(range => {
-            let s = document.getText(range);
+        for (let i = 0; i < options.ranges.length; i++){
+            let range = options.ranges[i];
+            let s = options.document.getText(range);
             let comment_removal = this.removeComments(s);
-            let range_offset = document.offsetAt(range.start);
+            let range_offset = options.document.offsetAt(range.start);
+            let docLength = s.length;
+            let loadprogress = 0;
+            let counter = 0;
             while (tempmatch = triples_match.exec(comment_removal.text)){    
                 //get offsets in text with removed comments
                 let dot_offset = comment_removal.text.indexOf(".",tempmatch.index+tempmatch[0].length);
@@ -136,10 +189,10 @@ export class SkosParser {
                     }
                 }
                 let match_range = new vscode.Range(
-                    document.positionAt(start_offset),
-                    document.positionAt(end_offset)
+                    options.document.positionAt(start_offset),
+                    options.document.positionAt(end_offset)
                 );
-                let location = new vscode.Location(document.uri,match_range);
+                let location = new vscode.Location(options.document.uri,match_range);
                 result.push({
                     location:location,
                     documentOffset:{
@@ -149,10 +202,16 @@ export class SkosParser {
                     text:tempmatch[0]
                 });
                 
+                if (options.withprogress && counter%100 === 0){
+                    let progressdiff = Math.ceil((options.withprogress.ticks*tempmatch.index)/docLength) - loadprogress;
+                    options.withprogress.progress.report({ increment: progressdiff });
+                    await this.wait(0);
+                    loadprogress += progressdiff;
+                }
+                counter++;
             }
-        });
-
-        return result;
+        }
+        return(result);
     }
 
     private getLocationOfMatchWithinLocatedText(lt:LocatedText,match:RegExpExecArray|string,offset?:number):vscode.Location{
@@ -236,19 +295,31 @@ export class SkosParser {
         return result;
     }
     
-    private appendSSS(document:vscode.TextDocument,sms:LocatedText[]):{ [id: string] : SkosResource; }{
+    private async appendSSS(options: {
+        document:vscode.TextDocument,
+        sms:LocatedText[],
+        withprogress?:{
+            progress:vscode.Progress<{
+                message?: string | undefined;
+                increment?: number | undefined;
+            }>,
+            ticks:number
+        }
+    }):Promise<{
+        [id: string]: SkosResource;
+    }>{
         let sss:{ [id: string] : SkosResource; } = {};
-        let prefixes = this.prefixes[document.uri.fsPath];
-        sms.forEach(sm => {
-            let match = sm.text;
-            let r_subject = new RegExp(subject_named,"g"), match_subject, s;
+        let prefixes = this.prefixes[options.document.uri.fsPath];
+        let loadprogress = 0;
+        let r_subject = new RegExp(subject_named,"g"), match_subject, s;
+        for (let i = 0; i < options.sms.length; i++){
             let p;
             let r_object = new RegExp(object_named,"g"), match_object, o;
             let r_po = new RegExp(po_named,"g"), match_po, po;
             let literal,lang;
     
-            if (match_subject = r_subject.exec(match)){
-                if (new RegExp(blankNodePropertyList).exec(match)){
+            if (match_subject = r_subject.exec(options.sms[i].text)){
+                if (new RegExp(blankNodePropertyList).exec(options.sms[i].text)){
                     let d = new Date();
                     s = "_BLANK_"+d.getSeconds()+"_"+d.getMilliseconds();
                 }
@@ -263,51 +334,50 @@ export class SkosParser {
                         locations: []
                     });
                 }
-                let conceptLocation = this.getLocationOfMatchWithinLocatedText(sm,s);
+                let conceptLocation = this.getLocationOfMatchWithinLocatedText(options.sms[i],s);
                 sss[s].concept.locations?.push({
                     location:conceptLocation,
                     documentOffset: {
-                        start: document.offsetAt(conceptLocation.range.start),
-                        end: document.offsetAt(conceptLocation.range.end)
+                        start: options.document.offsetAt(conceptLocation.range.start),
+                        end: options.document.offsetAt(conceptLocation.range.end)
                     },
                 });
                 let location = new vscode.Location(
-                    document.uri,
-                    sm.location.range
+                    options.document.uri,
+                    options.sms[i].location.range
                 );
                 sss[s].occurances.push({
                     location: location,
                     documentOffset: {
-                        start: document.offsetAt(location.range.start),
-                        end: document.offsetAt(location.range.end)
-                    },
-                    statement: match
+                        start: options.document.offsetAt(location.range.start),
+                        end: options.document.offsetAt(location.range.end)
+                    }
                 });
                 let offset = match_subject[0].length;
-                while (match_po = r_po.exec(match.substr(offset))){
+                while (match_po = r_po.exec(options.sms[i].text.substr(offset))){
                     p = match_po.groups && match_po.groups["predicate"];
-                    if (!p){return;}
+                    if (!p){continue;}
                     po = match_po.groups && match_po.groups["objectList"];
-                    if (!po){return;}
+                    if (!po){continue;}
                     while (match_po && match_po.groups && (match_object = r_object.exec(match_po.groups["objectList"]))){
                         o = match_object.groups && match_object.groups["object"] || "";
                         literal = match_object.groups && (match_object.groups["slq"] || match_object.groups["slsq"] || match_object.groups["sllq"] || match_object.groups["sllsq"]);
                         lang = match_object.groups && match_object.groups["lang"];
     
-                        let po_location = this.getLocationOfMatchWithinLocatedText(sm,match_po,offset);
+                        let po_location = this.getLocationOfMatchWithinLocatedText(options.sms[i],match_po,offset);
                         let predicateLocation = this.getLocationOfMatchWithinLocatedText({
                             location:po_location,
                             documentOffset:{
-                                start: document.offsetAt(po_location.range.start),
-                                end: document.offsetAt(po_location.range.end)
+                                start: options.document.offsetAt(po_location.range.start),
+                                end: options.document.offsetAt(po_location.range.end)
                             },
                             text:match_po[0]
                         },p);
                         let objectLocation = this.getLocationOfMatchWithinLocatedText({
                             location:po_location,
                             documentOffset:{
-                                start: document.offsetAt(po_location.range.start),
-                                end: document.offsetAt(po_location.range.end)
+                                start: options.document.offsetAt(po_location.range.start),
+                                end: options.document.offsetAt(po_location.range.end)
                             },
                             text:match_po[0]
                         },o); 
@@ -315,23 +385,23 @@ export class SkosParser {
                         sss[s].statements.push({
                             location: po_location,
                             documentOffset:{
-                                start: document.offsetAt(po_location.range.start),
-                                end: document.offsetAt(po_location.range.end)
+                                start: options.document.offsetAt(po_location.range.start),
+                                end: options.document.offsetAt(po_location.range.end)
                             },
                             text: match_po[0],
                             predicate: {
                                 location: predicateLocation,
                                 documentOffset:{
-                                    start: document.offsetAt(predicateLocation.range.start),
-                                    end: document.offsetAt(predicateLocation.range.end)
+                                    start: options.document.offsetAt(predicateLocation.range.start),
+                                    end: options.document.offsetAt(predicateLocation.range.end)
                                 },
                                 text: this.resolvePrefix(p,prefixes)||p
                             },
                             object: {
                                 location: objectLocation,
                                 documentOffset:{
-                                    start: document.offsetAt(objectLocation.range.start),
-                                    end: document.offsetAt(objectLocation.range.end)
+                                    start: options.document.offsetAt(objectLocation.range.start),
+                                    end: options.document.offsetAt(objectLocation.range.end)
                                 },
                                 text: this.resolvePrefix(o,prefixes)||o,
                                 lang: lang,
@@ -342,7 +412,14 @@ export class SkosParser {
                     }
                 }
             }
-        });
+            
+            if (options.withprogress && i%100 === 0){
+                let progressdiff = Math.ceil((options.withprogress.ticks*i)/options.sms.length) - loadprogress;
+                options.withprogress.progress.report({ increment: progressdiff });
+                await this.wait(0);
+                loadprogress += progressdiff;
+            }
+        }
         return sss;
     }
 }
