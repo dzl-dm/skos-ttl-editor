@@ -5,7 +5,10 @@ import { iridefs, IRIREF, LocatedPredicateObject } from './parser';
 export class SemanticHandler {
     diagnosticCollection = vscode.languages.createDiagnosticCollection("Semantic Diagnostics");
     uris: vscode.Uri[]=[];
-    diagnostics : { [id: string ] : vscode.Diagnostic[]; } = {};
+    diagnostics : { [id: string ] : {
+        diagnostic: vscode.Diagnostic,
+        location: vscode.Location
+    }[]; } = {};
 
     reset(){      
         this.uris.forEach(uri => {
@@ -13,6 +16,19 @@ export class SemanticHandler {
         });
         this.uris = [];
         this.diagnostics={};
+    }
+
+    refreshDiagnosticsRanges(){
+        Object.keys(this.diagnostics).forEach(key => {
+            this.diagnostics[key].forEach(d => {
+                d.diagnostic.range = d.location.range;
+            });
+        });
+    }
+    refreshDiagnostics(){
+        this.uris.forEach(uri => {
+            this.diagnosticCollection.set(uri, this.diagnostics[uri.fsPath].map(d => d.diagnostic));
+        });
     }
 
     private addDiagnostic(location:vscode.Location,severity:vscode.DiagnosticSeverity,message:string,related?:{
@@ -23,32 +39,29 @@ export class SemanticHandler {
             this.uris.push(location.uri);
             this.diagnostics[location.uri.fsPath]=[];
         }
-        let dIndex = this.diagnostics[location.uri.fsPath].push(new vscode.Diagnostic(location.range, message, severity));
+        let dIndex = this.diagnostics[location.uri.fsPath].push({
+            diagnostic: new vscode.Diagnostic(location.range, message, severity),
+            location: location
+        });
         if (related){
-            this.diagnostics[location.uri.fsPath][dIndex-1].relatedInformation = related.map(r => {
+            this.diagnostics[location.uri.fsPath][dIndex-1].diagnostic.relatedInformation = related.map(r => {
                 return new vscode.DiagnosticRelatedInformation(r.location,r.id);
             });
         }
-        this.uris.forEach(uri => {
-            this.diagnosticCollection.set(uri, this.diagnostics[uri.fsPath]);
-        });
     }
 
-    private removeDiagnostics(resources:SkosResource[]){
+    private removeDiagnostics(resources:SkosResource[],messageStartStringFilter?:string){
         resources.forEach(r => {
             r.occurances.forEach(occ => {
                 let ds = this.diagnostics[occ.location.uri.fsPath];
                 if (!ds){return;}
                 for (let i = ds.length-1;i>=0;i--){
-                    let d = ds[i];
-                    if (occ.location.range.contains(d.range)){
+                    let d = ds[i].diagnostic;
+                    if (occ.location.range.contains(d.range) && (!messageStartStringFilter || d.message.startsWith(messageStartStringFilter))){
                         ds.splice(i,1);
                     }
                 }
             });
-        });
-        this.uris.forEach(uri => {
-            this.diagnosticCollection.set(uri, this.diagnostics[uri.fsPath]);
         });
     }
 
@@ -58,7 +71,7 @@ export class SemanticHandler {
                 let ds = this.diagnostics[occ.location.uri.fsPath];
                 if (!ds){return;}
                 for (let i = ds.length-1;i>=0;i--){
-                    let d = ds[i];
+                    let d = ds[i].diagnostic;
                     if (occ.location.range.contains(d.range) && d.relatedInformation) {
                         for (let j = 0; j < d.relatedInformation.length; j++){
                             if (!conceptsToUpdate.map(x => x.concept.text).includes(d.relatedInformation[j].message)
@@ -83,22 +96,26 @@ export class SemanticHandler {
         if (conceptsToUpdate){
             this.appendDiagnosticRelatedResources(mergedSkosSubjects,conceptsToUpdate);
             this.removeDiagnostics(conceptsToUpdate);
+        } else {
+            this.reset();
         }
+        this.refreshDiagnosticsRanges();
         withprogress?.progress.report({ increment: 0, message: "Semantic checks (type)" });
         await this.wait();
-        this.typeCheck(mergedSkosSubjects);
+        this.typeCheck(mergedSkosSubjects,conceptsToUpdate);
         withprogress?.progress.report({ increment: Math.floor(withprogress.ticks/5), message: "Semantic checks (label)" });
         await this.wait();
-        this.labelCheck(mergedSkosSubjects);
+        this.labelCheck(mergedSkosSubjects,conceptsToUpdate);
         withprogress?.progress.report({ increment: Math.floor(withprogress.ticks/5), message: "Semantic checks (prefix)" });
         await this.wait();
-        this.prefixCheck(mergedSkosSubjects);
+        this.prefixCheck(mergedSkosSubjects,conceptsToUpdate);
         withprogress?.progress.report({ increment: Math.floor(withprogress.ticks/5), message: "Semantic checks (duplicate)" });
         await this.wait();
-        this.duplicateCheck(mergedSkosSubjects);
+        this.duplicateCheck(mergedSkosSubjects,conceptsToUpdate);
         withprogress?.progress.report({ increment: Math.floor(withprogress.ticks/5), message: "Semantic checks (recursion)" });
         await this.wait();
-        this.recursionCheck(mergedSkosSubjects);
+        this.recursionCheck(mergedSkosSubjects,conceptsToUpdate);
+        this.refreshDiagnostics();
     }
 
     private typeCheck(mergedSkosSubjects: { [id: string]: SkosResource; },conceptsToUpdate?:SkosResource[]){
@@ -135,7 +152,16 @@ export class SemanticHandler {
                     let langMatchingLabels = labels.filter(l => l.object.lang === lang).filter((value,index,self)=>self.map(s => s.object.text).indexOf(value.object.text)===index);
                     if (langMatchingLabels.length > 1) {
                         langMatchingLabels.forEach(label => {
-                            this.addDiagnostic(label.object.location,vscode.DiagnosticSeverity.Error,"The 'skos:prefLabel' for this resource and language '"+lang+"' has been declared more than once.");
+                            this.addDiagnostic(label.object.location,
+                                vscode.DiagnosticSeverity.Error,
+                                "The 'skos:prefLabel' for this resource and language '"+lang+"' has been declared more than once.",
+                                langMatchingLabels.filter(x => x !== label).map(x => {
+                                    return {
+                                        location:x.object.location,
+                                        id:x.object.text
+                                    };
+                                })
+                            );
                         });
                     }
                 });
@@ -175,7 +201,16 @@ export class SemanticHandler {
             let s = mergedSkosSubjects[key];
             let duplicates = s.statements.filter((value,index,self)=>self.map(s => s.predicate.text + " " + s.object.text).filter(x => x === value.predicate.text + " " + value.object.text).length > 1);
             duplicates.forEach(d => {
-                this.addDiagnostic(d.location,vscode.DiagnosticSeverity.Information,"Duplicate entry '"+d.text+"'.");
+                this.addDiagnostic(d.location,
+                    vscode.DiagnosticSeverity.Information,
+                    "Duplicate entry '"+d.text+"'.",
+                    duplicates.filter(x => x !== d).map(x => {
+                        return {
+                            location:x.object.location,
+                            id:x.object.text
+                        };
+                    })
+                );
             });
         });
     }
@@ -187,14 +222,16 @@ export class SemanticHandler {
             let s = mergedSkosSubjects[key];
             this.loops = [];
             this.getAncestorLoops(s,mergedSkosSubjects);
+            if (conceptsToUpdate) {
+                this.removeDiagnostics(this.loops.reduce((prev,curr)=>prev=prev.concat(curr),[]).map(x => x.resource),"Hierarchical recursion:");
+            }
             this.loops.forEach(loop => {
                 loop.forEach(a => {
-                    if (this.diagnosticCollection.get(a.statement.location.uri)?.filter(d => d.message.startsWith("Hierarchical recursion:") 
-                        && d.range.start.line === a.statement.location.range.start.line
-                        && d.range.start.character === a.statement.location.range.start.character
-                        && d.range.end.line === a.statement.location.range.end.line
-                        && d.range.end.character === a.statement.location.range.end.character
-                    ).length === 0){
+                    let sameDiagnostics = this.diagnostics[a.statement.location.uri.fsPath]?.filter(d => 
+                        d.diagnostic.message.startsWith("Hierarchical recursion:") 
+                        && d.diagnostic.range.isEqual(a.statement.location.range)
+                    );
+                    if (!sameDiagnostics || sameDiagnostics.length === 0){
                         this.addDiagnostic(
                             a.statement.location,
                             vscode.DiagnosticSeverity.Error,

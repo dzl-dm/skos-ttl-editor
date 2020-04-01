@@ -165,6 +165,8 @@ export class SkosParser {
             )];
         }
 
+        let progressTodo = options.ranges.map(range => options.document.offsetAt(range.end)-options.document.offsetAt(range.start)).reduce((prev,curr)=>prev+=curr,0);
+        let progressDone = 0;
         for (let i = 0; i < options.ranges.length; i++){
             let range = options.ranges[i];
             let s = options.document.getText(range);
@@ -202,13 +204,20 @@ export class SkosParser {
                     text:tempmatch[0]
                 });
                 
-                if (options.withprogress && counter%100 === 0){
-                    let progressdiff = Math.ceil((options.withprogress.ticks*tempmatch.index)/docLength) - loadprogress;
+                if (options.withprogress !== undefined && counter%100 === 0){
+                    let progressdiff = Math.ceil((options.withprogress.ticks*(tempmatch.index+progressDone))/progressTodo) - loadprogress;
                     options.withprogress.progress.report({ increment: progressdiff });
                     await this.wait(0);
                     loadprogress += progressdiff;
                 }
                 counter++;
+            }
+            if (options.withprogress !== undefined){
+                progressDone += docLength;
+                let progressdiff = Math.ceil((options.withprogress.ticks*progressDone)/progressTodo) - loadprogress;
+                options.withprogress.progress.report({ increment: progressdiff });
+                await this.wait(0);
+                loadprogress += progressdiff;
             }
         }
         return(result);
@@ -311,12 +320,12 @@ export class SkosParser {
         let sss:{ [id: string] : SkosResource; } = {};
         let prefixes = this.prefixes[options.document.uri.fsPath];
         let loadprogress = 0;
-        let r_subject = new RegExp(subject_named,"g"), match_subject, s;
         for (let i = 0; i < options.sms.length; i++){
             let p;
             let r_object = new RegExp(object_named,"g"), match_object, o;
             let r_po = new RegExp(po_named,"g"), match_po, po;
             let literal,lang;
+            let r_subject = new RegExp(subject_named,"g"), match_subject, s;
     
             if (match_subject = r_subject.exec(options.sms[i].text)){
                 if (new RegExp(blankNodePropertyList).exec(options.sms[i].text)){
@@ -413,12 +422,17 @@ export class SkosParser {
                 }
             }
             
-            if (options.withprogress && i%100 === 0){
+            if (options.withprogress !== undefined && i%100 === 0){
                 let progressdiff = Math.ceil((options.withprogress.ticks*i)/options.sms.length) - loadprogress;
                 options.withprogress.progress.report({ increment: progressdiff });
                 await this.wait(0);
                 loadprogress += progressdiff;
             }
+        }
+        if (options.withprogress !== undefined){
+            let progressdiff = options.withprogress.ticks - loadprogress;
+            options.withprogress.progress.report({ increment: progressdiff });
+            await this.wait(0);
         }
         return sss;
     }

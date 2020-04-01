@@ -244,24 +244,27 @@ export class SkosResourceHandler {
             changeEvents.forEach(ce => {
                 let document = ce.document;
                 if (document.uri.fsPath !== lo.location.uri.fsPath){return;}
-                ce.contentChanges.forEach(cc => {
+                for (let i = 0; i < ce.contentChanges.length; i++){
+                    let cc = ce.contentChanges[i];
+                    let newStartPosition:vscode.Position|undefined;
+                    let newEndPosition:vscode.Position|undefined;
                     if (lo.documentOffset.start>=cc.rangeOffset){
                         let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.start)-cc.rangeOffset;
-                        lo.location.range = new vscode.Range(
-                            document.positionAt(lo.documentOffset.start-substraction+cc.text.length),
-                            lo.location.range.end
-                        );
-                        lo.documentOffset.start=document.offsetAt(lo.location.range.start);
+                        newStartPosition = document.positionAt(lo.documentOffset.start-substraction+cc.text.length);
                     }
                     if (lo.documentOffset.end>=cc.rangeOffset){
                         let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.end)-cc.rangeOffset;
+                        newEndPosition = document.positionAt(lo.documentOffset.end-substraction+cc.text.length);
+                    }
+                    if (newStartPosition || newEndPosition) {
                         lo.location.range = new vscode.Range(
-                            lo.location.range.start,
-                            document.positionAt(lo.documentOffset.end-substraction+cc.text.length)
+                            newStartPosition || lo.location.range.start,
+                            newEndPosition || lo.location.range.end
                         );
+                        lo.documentOffset.start=document.offsetAt(lo.location.range.start);
                         lo.documentOffset.end=document.offsetAt(lo.location.range.end);
                     }
-                });
+                }
             });
         });
     }

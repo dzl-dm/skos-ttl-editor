@@ -46,7 +46,6 @@ export class LoadingHandler {
 		let loadingPromise:Promise<{ [id: string] : SkosResource; }> = new Promise((resolve,reject)=>{
 			loadingPromiseResolve = resolve;			
 		});	
-		if (!options.affectedResources){this.semanticHandler.reset();}
 		let numberOfDocuments:number = options.documents.length;
 		let numberOfLoadedTextDocuments = 0;
 		let conceptsToUpdate = options.affectedResources || [];
@@ -149,6 +148,7 @@ export class LoadingHandler {
 					Promise.all(parsingDocuments).then(async ()=>{
 						if (conceptsToUpdate.length === 0){
 							loadingPromiseResolve(this.mergedSkosResources);
+							this.semanticHandler.refreshDiagnostics();
 							return;
 						}
 						progress.report({ increment: 0, message: "Merging" });

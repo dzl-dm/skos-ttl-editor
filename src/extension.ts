@@ -91,10 +91,10 @@ export function activate(context: vscode.ExtensionContext) {
 	let changeEvents:vscode.TextDocumentChangeEvent[]=[];
 	let parseDelay:number = <number>vscode.workspace.getConfiguration().get("skos-ttl-editor.parsingAndVerificationDelayAfterUserInput");
 	vscode.workspace.onDidChangeTextDocument(changeEvent => {
+		if (changeEvent.contentChanges.length>0){
+			changeEvents.push(changeEvent);
+		}
 		if (inputDelay){
-			if (changeEvent.contentChanges.length>0){
-				changeEvents.push(changeEvent);
-			}
 			clearTimeout(inputDelay);
 		}
 		inputDelay = setTimeout(()=>{

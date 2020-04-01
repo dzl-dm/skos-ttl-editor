@@ -17,7 +17,7 @@ suite('Parser Test Suite', () => {
 
     test('Hierarchy diagnostic test', async () => {
         await new documenthandler.DocumentHandler({skosResourceHandler}).openTextDocument(uri).then(doc => {
-            new parser.SkosParser(skosResourceHandler).parseTextDocument(doc).then(sss => {
+            new parser.SkosParser(skosResourceHandler).parseTextDocument({document:doc}).then(sss => {
                 if (!sss){return;}
                 let semantichandler = new SemanticHandler();
                 semantichandler.checkSemantics(sss);
