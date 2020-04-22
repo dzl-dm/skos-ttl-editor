@@ -12,9 +12,9 @@ import {
   import * as vscode from 'vscode';
   import { SkosNode } from './skosnode';
   import * as path from 'path';
-  import { getObjectValuesByPredicate, SkosResource, SkosResourceHandler } from './skosresourcehandler';
+  import { skosResourceManager, SkosResource, SkosSubjectType, SkosPredicateType } from './skosresourcehandler';
 
-  export class SkosTreeDataProvider implements TreeDataProvider<SkosNode> {
+export class SkosTreeDataProvider implements TreeDataProvider<SkosNode> {
     private _onDidChangeTreeData: EventEmitter<SkosNode | null> = new EventEmitter<SkosNode | null>();
     readonly onDidChangeTreeData: Event<SkosNode | null> = this._onDidChangeTreeData.event;
     private context: ExtensionContext;
@@ -38,10 +38,10 @@ import {
       }
     }
     setTree(rootNodes:SkosNode[]){
-        this.tree = rootNodes.filter(n => n.getTypes().includes(iridefs.conceptScheme)).sort(this.treeSortByLabel);
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.collection)).sort(this.treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(iridefs.concept)).sort(this.treeSortByLabel));
-        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => [iridefs.conceptScheme,iridefs.collection,iridefs.concept].includes(x)).length === 0).sort(this.treeSortByLabel));
+        this.tree = rootNodes.filter(n => n.getTypes().includes(SkosSubjectType.ConceptScheme)).sort(this.treeSortByLabel);
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(SkosSubjectType.Collection)).sort(this.treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().includes(SkosSubjectType.Concept)).sort(this.treeSortByLabel));
+        this.tree = this.tree.concat(rootNodes.filter(n => n.getTypes().filter(x => [SkosSubjectType.Concept,SkosSubjectType.ConceptScheme,SkosSubjectType.Collection].includes(x)).length === 0).sort(this.treeSortByLabel));
         this.refresh();
     }
     getChildren(element?: SkosNode): SkosNode[] | Thenable<SkosNode[]> {
@@ -58,8 +58,12 @@ import {
             treeItem.collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
         }
         treeItem.iconPath = this.getIcon(element);
-        treeItem.description = element.getDescription();
-        treeItem.id = element.getParent()?.getConcept() + "/" + element.getConcept();
+        treeItem.description = element.getNotations();
+        treeItem.id = element.getId();
+        let x:SkosNode|undefined = element;
+        while (x = x.getParent()){
+          treeItem.id = x.getId() + "/" + treeItem.id;
+        }
         treeItem.command = {
           arguments: [ element ],
           title: "Selection",
@@ -76,12 +80,6 @@ import {
 
     private getIcon(node: SkosNode): any {
       let nodeType;
-      if (node.getTypes().includes(iridefs.conceptScheme)) {
-        nodeType = "dependency";
-      }
-      if (node.getTypes().includes(iridefs.collection)) {
-        nodeType = "folder";
-      }
       if (node.getIconname() !== undefined) {
         nodeType = <string>node.getIconname();
       }
@@ -97,23 +95,14 @@ import {
   
 export class SkosOutlineProvider {
     treeView: TreeView<SkosNode|undefined>;
-    skosResourceHandler:SkosResourceHandler;
-    mergedSkosResources: { [id: string] : SkosResource; };
     private treeDataProvider:SkosTreeDataProvider;
   
-    constructor(options:{
-      context: ExtensionContext, 
-      mergedSkosResources: { [id: string] : SkosResource; },
-      rootNodes?: SkosNode[],        
-      skosResourceHandler:SkosResourceHandler;
-    }) {
-      this.treeDataProvider = new SkosTreeDataProvider(options.context, options.rootNodes);
+    constructor(context: ExtensionContext) {
+      this.treeDataProvider = new SkosTreeDataProvider(context);
       let treeDataProvider = this.treeDataProvider;
       this.treeView = window.createTreeView("skosOutline", {
         treeDataProvider
       });
-      this.skosResourceHandler=options.skosResourceHandler;
-      this.mergedSkosResources = options.mergedSkosResources;
     }
 
     setTree(rootNodes: SkosNode[]){
@@ -126,51 +115,46 @@ export class SkosOutlineProvider {
       nodes.forEach(node => this.selectTreeItem(node));
     }
 
-    createTreeviewContent(){	
-      let topsss: SkosResource[]=[];
-      Object.keys(this.mergedSkosResources).forEach(key => {
-        if (this.mergedSkosResources[key].parents.filter(p => !getObjectValuesByPredicate(iridefs.type,p).includes(iridefs.conceptScheme)).length===0){
-          topsss.push(this.mergedSkosResources[key]);
-        }
-      });
+
+    async createTreeviewContent(){
       let topnodes:SkosNode[]=[];
-      let addSkosNodes = (m:SkosResource,node:SkosNode,scheme?:string)=>{
-        let childnodes:SkosNode[]=[];
-        m.children.forEach(c => {
-          if (scheme && !getObjectValuesByPredicate(iridefs.inScheme,c).includes(scheme)){return;}
-          let childnode = new SkosNode(c.concept.text);
-          childnode.setNodeAttributes({parent:node});
-          childnodes.push(childnode);
-          addSkosNodes(c,childnode,scheme);
-        });
-        node.setNodeAttributes({
-          children:childnodes,
-          label:this.skosResourceHandler.getLabel(m),
-          notations:getObjectValuesByPredicate(iridefs.notation,m),
-          iconname: m.icon,
-          occurances: m.occurances,
-          types: getObjectValuesByPredicate(iridefs.type,m)
-        });
-        m.treeviewNodes.push(node);
-      };
-      let schemes = Object.keys(this.mergedSkosResources)
-        .map(key => getObjectValuesByPredicate(iridefs.inScheme,this.mergedSkosResources[key]))
-        .reduce((prev,current) => prev = prev.concat(current),[])
-        .filter((value, index, array) => array.indexOf(value)===index);
-      topsss.forEach(m => {
-        let topnode = new SkosNode(m.concept.text);
-        topnodes.push(topnode);
-        if (schemes.includes(m.concept.text)){
-          let topschemenodes = Object.keys(this.mergedSkosResources)
-            .map(key => this.mergedSkosResources[key])
-            .filter(s => getObjectValuesByPredicate(iridefs.inScheme,s).includes(m.concept.text) && !s.parents.map(p => getObjectValuesByPredicate(iridefs.inScheme,p)).reduce((p,c)=>p=p.concat(c),[]).includes(m.concept.text));
-          m.children = topschemenodes;
-          addSkosNodes(m,topnode,m.concept.text);
-        }
-        else {
-          addSkosNodes(m,topnode);
-        }
-      });
+      let topResources = Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).filter(resource => resource.broaders().length === 0);
+      for (let resource of topResources){
+        topnodes.push(this.createTreeNode({resource}));
+      }
       this.setTree(topnodes);
+    }
+
+    createTreeNode(options:{
+      resource:SkosResource,
+      parents?:SkosResource[], 
+      parentNode?:SkosNode,
+      treeScheme?:SkosResource
+    }):SkosNode{
+      let [ parents, resource, parentNode, treeScheme ] = [ options.parents || [], options.resource, options.parentNode, options.treeScheme ];
+      let newNode = new SkosNode(resource,parentNode);
+      newNode.init();
+      resource.treeNode = newNode;
+      let treeChildren:SkosResource[];
+      if (resource.types.includes(SkosSubjectType.ConceptScheme)){
+        treeScheme = resource;
+        treeChildren = resource.schemeMembers().filter(r =>{
+          //without parent in the scheme (if they have a parent in scheme, they will be recognized by the else-clause)
+          for (let parent of r.parents()){if (parent.inScheme(resource)){return false;}}
+          return true;
+        });
+      } else if (treeScheme) {
+        //TODO: decide whether narrowers not in scheme should be shown as tree children or not
+        treeChildren = resource.narrowers().filter(r => treeScheme && r.inScheme(treeScheme));
+      } else {
+        treeChildren = resource.narrowers();
+      }
+      treeChildren.forEach(narrower => {
+        //recursion check
+        if (parents.includes(narrower)){return;}
+        let childNode = this.createTreeNode({resource: narrower, parents: parents.concat(narrower), parentNode: newNode, treeScheme});
+        newNode.addChild(childNode);
+      });
+      return newNode;
     }
 }

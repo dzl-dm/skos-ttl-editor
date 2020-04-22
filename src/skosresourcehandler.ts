@@ -1,299 +1,615 @@
 import * as vscode from 'vscode';
-import { SkosNode } from './skosnode';
-import { LocatedText, LocatedPredicateObject, iridefs, LocatedSubject } from './parser';
+import { SkosNode, iconDefinitions, IconDefinition } from './skosnode';
+import { iridefs, removeComments } from './parser';
+import { sortLocations, turtleDocuments, TurtleDocument, adjustOccurence } from './documenthandler';
+import { asyncForeach } from './extension';
+import { performance } from 'perf_hooks';
 
-export class SkosResourceHandler {   
-    mergedSkosResources:{ [id: string] : SkosResource; };
-    allSkosResources:{[id:string]:{ [id: string] : SkosResource; }};
-    constructor(options:{
-        mergedSkosResources:{ [id: string] : SkosResource; },
-        allSkosResources:{[id:string]:{ [id: string] : SkosResource; }}
-    }){
-        this.mergedSkosResources = options.mergedSkosResources;
-        this.allSkosResources = options.allSkosResources;
-    }
-    
-    getEmptySkosSubject(concept:LocatedSubject):SkosResource{
-        return {
-            concept:concept,
-            statements:[],
-            children:[],
-            parents:[],
-            virtual:true,
-            description:new vscode.MarkdownString(""),
-            occurances:[],
-            treeviewNodes:[]
-        };
+class SkosResourceManager {
+    resources:SkosResourceList={};
+
+    addResource = (resource:SkosResource) => {
+        this.resources[resource.id]=resource;
     }
 
-    updateReferences(sss: { [id: string] : SkosResource; }){
-        this.addReferencedSSS(sss);
-        this.addHierarchyReferences(sss);
-        this.addDescription(sss);
-        this.addIcon(sss);
-    }
-    
-    
-    private addReferencedSSS(sss:{ [id: string] : SkosResource; }){
-        Object.keys(sss).forEach(key => {
-            let ti = sss[key];
-            this.getStatementsWithHierarchyReference(ti).forEach(b => {
-                if (!Object.keys(sss).includes(b.object.text)){
-                    let t = this.getEmptySkosSubject({text: b.object.text});
-                    sss[b.object.text]=t;
-                }
-            });	
-        });
-    }
-    
-    private addHierarchyReferences(sss:{ [id: string] : SkosResource; }){	
-        let customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
-        let customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
-        let predicatesNarrower = [ iridefs.narrower, iridefs.member, iridefs.hasTopConcept ].concat(customHierarchicalReferencePredicatesNarrower);
-        let predicatesBroader = [ iridefs.broader, iridefs.topConceptOf ].concat(customHierarchicalReferencePredicatesBroader);
-        Object.keys(sss).forEach(key => {
-            let ti = sss[key];
-            getStatementsByPredicate(predicatesBroader,ti).forEach(b => {
-                if (Object.keys(sss).includes(b.object.text)){
-                    let broaderti = sss[b.object.text];
-                    if (!broaderti.children.includes(ti) && !this.getDescendants(ti).includes(broaderti) && broaderti !== ti) {
-                        broaderti.children.push(ti);
-                    }
-                    if (!ti.parents.includes(broaderti) && !this.getAncestors(broaderti).includes(ti) && broaderti !== ti) {
-                        ti.parents.push(broaderti);
-                    }
-                }
-            });
-            getStatementsByPredicate(predicatesNarrower,ti).forEach(n => {
-                if (Object.keys(sss).includes(n.object.text)){
-                    let narrowerti = sss[n.object.text];
-                    if (!narrowerti.parents.includes(ti) && !this.getAncestors(ti).includes(narrowerti) && narrowerti !== ti) {
-                        narrowerti.parents.push(ti);
-                    }
-                    if (!ti.children.includes(narrowerti) && !this.getDescendants(narrowerti).includes(ti) && narrowerti !== ti) {
-                        ti.children.push(narrowerti);
-                    }
-                }
-            });
-            getStatementsByPredicate(iridefs.topConceptOf,ti).forEach(tc => {
-                sss[tc.object.text].statements.push({
-                    location:tc.location,
-                    documentOffset:tc.documentOffset,
-                    text:tc.text,
-                    predicate:{
-                        location:tc.predicate.location,
-                        documentOffset:tc.predicate.documentOffset,
-                        text:iridefs.conceptScheme
-                    },
-                    object:{
-                        location:tc.object.location,
-                        documentOffset:tc.object.documentOffset,
-                        text:ti.concept.text
-                    }
-                });
-            });
-        });
-    }
-    
-    private addDescription(sss:{ [id: string] : SkosResource; }){
-        Object.keys(sss).forEach(key => {
-            let item = sss[key];
-    
-            item.description = new vscode.MarkdownString();
-            item.description.appendMarkdown(this.getLabel(item)+"\n---\n");
-            
-            let pathMarkdown = "";
-            let paths = this.getPaths([{top:item,stringPath:[]}]);
-            paths.forEach((path:{top: SkosResource,stringPath: String[]})=>{
-                let stringPath = (<String[]>[this.getLabel(path.top)]).concat(path.stringPath);
-                stringPath.forEach((s,index) => {
-                    for (let i=0;i<index;i++){
-                        pathMarkdown+="    ";
-                    }
-                    pathMarkdown+="- "+s+"\n";
-                });
-            });		
-            item.description.appendMarkdown(pathMarkdown);
-    
-            /*item.occurances.forEach((occ,index)=>{
-                item.description.appendMarkdown("\n---\n"+occ.location.uri.fsPath.substr(occ.location.uri.fsPath.lastIndexOf("\\")+1) + ": Lines " + (occ.location.range.start.line+1) + " - " + (occ.location.range.end.line+1));
-                item.description.appendCodeblock(occ.statement);
-            });*/
-        });
+    addNonexistingReferencedResource = (id:string):SkosResource => {
+        this.resources[id]=new SkosResource(id);
+        return this.resources[id];
     }
 
-    customIcons:CustomIconDefinition[]|undefined = vscode.workspace.getConfiguration().get("skos-ttl-editor.customIcons");
-    private addIcon(sss:{ [id: string] : SkosResource; }){
-        Object.keys(sss).forEach(key => {
-            sss[key].statements.forEach(statement => {
-                this.customIcons?.forEach(ci => {
-                    if ((!ci.rule.subject || ci.rule.subject === key)
-                        && (!ci.rule.predicate || ci.rule.predicate === statement.predicate.text)
-                        && (!ci.rule.object || ci.rule.object === statement.object.text)){
-                            if (ci.target === "subject" && sss[key]){
-                                sss[key].icon = ci.icon;
-                            }
-                            else if (ci.target === "object" && sss[statement.object.text]) {
-                                sss[statement.object.text].icon = ci.icon;
-                            }
-                        }     
-                });
-            });
-        });
-    }
-
-    private getPaths(paths:{top: SkosResource,stringPath: String[]}[]):{top: SkosResource,stringPath: String[]}[]{
-        let result:{top: SkosResource,stringPath: String[]}[] = [];
-        paths.forEach((path:{top: SkosResource,stringPath: String[]})=>{
-            if (path.top.parents.length > 0){	
-                let newpaths:{top: SkosResource,stringPath: String[]}[] = path.top.parents.map(p => { 
-                    return {
-                        top:p,
-                        stringPath:(<String[]>[this.getLabel(path.top)]).concat(path.stringPath)
-                    };
-                });
-                result = result.concat(this.getPaths(newpaths));
+    async evaluatePredicateObjects(resources:SkosResource[],progressReport?:(percentage:number,message?:string)=>Promise<any>)  {
+        let counter=0;
+        for (let resource of resources){
+            resource.evaluatePredicateObjects();
+            counter++;
+            if (progressReport && (counter%100===0 || counter === resources.length)){
+                await progressReport(counter/resources.length*100);
             }
-            else {
-                result.push(path);
-            }
-        });	
-        return result;
-    }   
-    mergeSkosResources(conceptsToUpdate: SkosResource[]):{ [id: string] : SkosResource; }{
-        let sss:{ [id: string] : SkosResource; }={};
-        Object.keys(this.allSkosResources).forEach(filename => {
-            Object.keys(this.allSkosResources[filename]).forEach(subjectname => {
-                if (!conceptsToUpdate.map(c => c.concept.text).includes(subjectname) && Object.keys(this.mergedSkosResources).includes(subjectname)){
-                    sss[subjectname] = this.mergedSkosResources[subjectname];
-                }
-                else {
-                    let ss = this.allSkosResources[filename][subjectname];
-                    if (!sss[subjectname]){
-                        sss[subjectname] = this.getEmptySkosSubject(ss.concept);
-                    }
-
-                    sss[subjectname].children.push(...ss.children);
-                    sss[subjectname].parents.push(...ss.parents);
-                    sss[subjectname].occurances.push(...ss.occurances);
-                    sss[subjectname].statements.push(...ss.statements);   
-
-                    sss[subjectname].children = sss[subjectname].children.filter((value,index,self) => self.map(c => c.concept).indexOf(value.concept) === index);
-                    sss[subjectname].parents = sss[subjectname].parents.filter((value,index,self) => self.map(p => p.concept).indexOf(value.concept) === index);
-                }
-                if (!sss[subjectname]){console.log(subjectname);}
-            });
-        });
-        return sss;
-    }
-
-    getDescendants(s:SkosResource,result:SkosResource[]=[]):SkosResource[]{
-        result.splice(result.length,0,...s.children);
-        s.children.forEach(c => {
-            this.getDescendants(c,result);
-        });
-        return result;
-    }
-
-    getAncestors(s:SkosResource,result:SkosResource[]=[]):SkosResource[]{
-        result.splice(result.length,0,...s.parents);
-        s.parents.forEach(p => {
-            this.getAncestors(p,result);
-        });
-        return result;
-    }
-
-    getLabel(s:SkosResource):string{
-        let englishLabels = getStatementsByPredicate(iridefs.prefLabel,s).filter(x => x.object.lang==="en");
-        if (englishLabels.length === 0 || !englishLabels[0].object.literal){
-            return s.concept.text;
-        } else {
-            return englishLabels[0].object.literal;
         }
     }
 
-    getStatementsWithObjectReference(s:SkosResource):LocatedPredicateObject[]{
-        return s.statements.filter(x => !x.object.literal);
+    removeIntersectingOccurences(occurences:Occurence[]):SkosResource[]{
+        let result:SkosResource[]=[];
+        Object.keys(this.resources).forEach(key => {
+            let resource = this.resources[key];
+            for (let i = resource.occurences.length-1; i >=0; i--){
+                let occurence = resource.occurences[i];
+                if (!occurence){continue;}
+                occurences.forEach(o => {
+                    if (occurence.document.uri.fsPath === o.document.uri.fsPath){
+                        //TODO: replace intersection function
+                        if (occurence.location().range.intersection(o.location().range)){
+                            result.push(resource);
+                            resource.removeIntersectingoccurences([o.location()]);
+                        }
+                    }
+                });
+            }
+        });
+        return result;
     }
-    
-    getStatementsWithHierarchyReference(s:SkosResource):LocatedPredicateObject[]{
-        let hierarchyReferences = [iridefs.broader,iridefs.member,iridefs.narrower,iridefs.topConceptOf,iridefs.hasTopConcept,iridefs.inScheme];
-        return s.statements.filter(x => hierarchyReferences.includes(x.predicate.text));
+
+    resetResourceEvaluations(resources:SkosResource[]):void{
+        for (let resource of resources){
+            resource.resetEvaluations();
+        }
+    }
+
+    removeResourcesWithoutOccurenceOrReference(){
+        Object.keys(this.resources).forEach(key => {
+            let resource = this.resources[key];
+            if (resource.occurences.length === 0 && resource.references.length === 0){
+                delete this.resources[key];
+            }
+        });
+    }
+
+    getNewLocationsToParseByChangeEvents(changeEvents:vscode.TextDocumentChangeEvent[]):vscode.Location[]{
+        let result:vscode.Location[]=[];
+        for (let changeEvent of changeEvents){
+            for (let contentChange of changeEvent.contentChanges){
+                let minOffset = 0;
+                let maxOffset = turtleDocuments.get(changeEvent.document.uri).text?.length||0;
+                Object.keys(this.resources).map(key => this.resources[key]).forEach(resource => {
+                    resource.occurences.forEach(occurence => {
+                        if (occurence.document.uri === changeEvent.document.uri){
+                            if (occurence.documentOffset.end <= contentChange.rangeOffset
+                                && occurence.documentOffset.end > minOffset){
+                                    minOffset = occurence.documentOffset.end;
+                                }
+                            if (occurence.documentOffset.start >= contentChange.rangeOffset+contentChange.text.length
+                                && occurence.documentOffset.start < maxOffset){
+                                    maxOffset = occurence.documentOffset.start;
+                                }
+                        }
+                    });
+                });
+                result.push(new vscode.Location(changeEvent.document.uri,new vscode.Range(changeEvent.document.positionAt(minOffset),changeEvent.document.positionAt(maxOffset))));
+            }
+        }
+        return sortLocations(result);
     }
 
     adjustLocations(changeEvents: vscode.TextDocumentChangeEvent[]){
-        let locationsAndOffsets:{
-            location:vscode.Location,
-            documentOffset:{
-                start:number;
-                end:number;
-            },
-        }[]=[];
-        Object.keys(this.mergedSkosResources).map(key => this.mergedSkosResources[key]).forEach(r => {
-            if (r.concept.locations){
-                locationsAndOffsets.push(...r.concept.locations);
-            }
-            r.statements.forEach(s => {
-                locationsAndOffsets.push({location:s.location,documentOffset:s.documentOffset});
-                locationsAndOffsets.push({location:s.object.location,documentOffset:s.object.documentOffset});
-                locationsAndOffsets.push({location:s.predicate.location,documentOffset:s.predicate.documentOffset});
-            });
-            locationsAndOffsets.push(...r.occurances.map(o => { return {location:o.location,documentOffset:o.documentOffset};}));
-        });
-        locationsAndOffsets.forEach(lo => {
-            changeEvents.forEach(ce => {
-                let document = ce.document;
-                if (document.uri.fsPath !== lo.location.uri.fsPath){return;}
-                for (let i = 0; i < ce.contentChanges.length; i++){
-                    let cc = ce.contentChanges[i];
-                    let newStartPosition:vscode.Position|undefined;
-                    let newEndPosition:vscode.Position|undefined;
-                    if (lo.documentOffset.start>=cc.rangeOffset){
-                        let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.start)-cc.rangeOffset;
-                        newStartPosition = document.positionAt(lo.documentOffset.start-substraction+cc.text.length);
-                    }
-                    if (lo.documentOffset.end>=cc.rangeOffset){
-                        let substraction = Math.min(cc.rangeOffset+cc.rangeLength,lo.documentOffset.end)-cc.rangeOffset;
-                        newEndPosition = document.positionAt(lo.documentOffset.end-substraction+cc.text.length);
-                    }
-                    if (newStartPosition || newEndPosition) {
-                        lo.location.range = new vscode.Range(
-                            newStartPosition || lo.location.range.start,
-                            newEndPosition || lo.location.range.end
-                        );
-                        lo.documentOffset.start=document.offsetAt(lo.location.range.start);
-                        lo.documentOffset.end=document.offsetAt(lo.location.range.end);
+        Object.keys(this.resources).forEach(key => this.resources[key].adjustLocations(changeEvents));
+    }
+
+    getResource(o: SkosObject):SkosResource{
+        let text = o.getText();
+        text = prefixManager.resolve(o.document.uri,text) || text;
+        return text && this.resources[text] || this.addNonexistingReferencedResource(text);
+    }
+
+    getIntersectionResources(uri:vscode.Uri,range:vscode.Range):SkosResource[]{
+        return Object.keys(this.resources)
+            .map(key => this.resources[key])
+            .filter(resource => {
+                for(let occurence of resource.occurences){
+                    if (occurence.document.uri === uri && occurence.location().range.intersection(range)){
+                        return true;
                     }
                 }
+                return false;
             });
-        });
     }
 }
 
-export function getStatementsByPredicate(predicate:string|string[],s:SkosResource):LocatedPredicateObject[]{
-    return s.statements.filter(x => {
-        if (typeof predicate === "string") {
-            return x.predicate.text===predicate;
+export const skosResourceManager = new SkosResourceManager();
+
+interface SkosResourceList {[id: string] : SkosResource;}
+
+export class SkosResource {
+    id:string;
+    types:SkosSubjectType[]=[];
+    idOccurences:Occurence[]=[];
+    notations:SkosObject[]=[];
+    occurences:Occurence[]=[];
+    description = new vscode.MarkdownString("");
+    predicateObjects:SkosPredicateObject[]=[];
+    treeNode:SkosNode|undefined;
+    references:SkosReference[]=[];
+    constructor(id:string){
+        this.id = id;
+    }
+
+    resetEvaluations(){
+        for (let i = this.references.length-1; i >=0; i--){
+            let reference = this.references[i];
+            if (reference.external){continue;}
+            let toRemove = reference.resource.references.filter(r2 => r2.predicateObject === reference.predicateObject && r2.external === true);
+            if (toRemove.length>0){
+                reference.resource.references.splice(reference.resource.references.indexOf(toRemove[0]),1);
+            }
+            this.references.splice(i,1);
         }
-        else if (predicate instanceof Array){
-            return predicate.includes(x.predicate.text);
+        this.types=[];
+        this.description= new vscode.MarkdownString("");
+    }
+
+    schemeMembers():SkosResource[]{
+        return this.references.filter(reference => 
+            reference.external && reference.predicateObject.predicate.type === SkosPredicateType.InScheme
+            || !reference.external && reference.predicateObject.predicate.type === SkosPredicateType.HasTopConcept
+        ).map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
+    }
+    inScheme(scheme:SkosResource):boolean{
+        return this.references.filter(reference => 
+            !reference.external && reference.resource === scheme && reference.predicateObject.predicate.type === SkosPredicateType.InScheme
+            || reference.external && reference.resource === this && reference.predicateObject.predicate.type === SkosPredicateType.HasTopConcept
+        ).length > 0;
+    }
+    narrowers():SkosResource[]{
+        return this.narrowerReferences().map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
+    }
+    narrowerReferences():SkosReference[]{
+        return this.references.filter(r => !r.external && r.predicateObject.predicate.type === SkosPredicateType.Narrower 
+            || !r.external && r.predicateObject.predicate.type === SkosPredicateType.Member
+            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader);
+    }
+    broaders():SkosResource[]{
+        return this.broaderReferences().map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
+    }
+    broaderReferences():SkosReference[]{
+        return this.references.filter(r => !r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader 
+            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Narrower
+            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Member);
+    }
+    parents():SkosResource[]{
+        return this.references.filter(r => !r.external && [SkosPredicateType.Broader,SkosPredicateType.InScheme].includes(r.predicateObject.predicate.type)
+            || r.external && [SkosPredicateType.Narrower,SkosPredicateType.HasTopConcept,SkosPredicateType.Member].includes(r.predicateObject.predicate.type))
+            .map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
+    }
+
+    addReference(po:SkosPredicateObject, resource:SkosResource, iconDefinition?:IconDefinition){
+        this.references.push({
+            resource,
+            external:false,
+            predicateObject:po,
+            iconDefinition
+        });
+        if (resource === this){return;}
+        resource.references.push({
+            resource: this,
+            external: true,
+            predicateObject:po,
+            iconDefinition
+        });
+    }
+
+    evaluatePredicateObjects(){
+        this.predicateObjects.forEach(po => {
+            if (!po.predicate || !po.object) {return;}
+            let predicateText = po.predicate.getPrefixResolvedText();
+            let objectText = po.object.getPrefixResolvedText();
+            //icon evaluation
+            let iconDefinition:IconDefinition|undefined;
+            iconDefinitions.forEach(definition => {
+                let definitionPredicates=definition.rule.predicate && (Array.isArray(definition.rule.predicate) && definition.rule.predicate || [definition.rule.predicate]);
+                if (definition.rule.subject && definition.rule.subject !== this.id){return;}
+                if (definition.rule.predicate && !definitionPredicates?.includes(predicateText)){return;}
+                if (definition.rule.object && definition.rule.object !== objectText){return;}
+                if (definition.target === "subject"){
+                    this.addReference(po,this,definition);
+                } else if (definition.target === "object"){
+                    iconDefinition = definition;
+                }
+            });
+
+            po.predicate.evaluateType(predicateText);
+            if (po.predicate.type === SkosPredicateType.Unclassified){
+                if (!po.object.literal){
+                    let o = prefixManager.resolve(po.document.uri, objectText);
+                    let or = o && skosResourceManager.resources[o];
+                    if (or){
+                        this.addReference(po,or,iconDefinition);          
+                    }
+                }    
+                return;      
+            }
+            switch(po.predicate.type){
+                case SkosPredicateType.Broader:
+                case SkosPredicateType.Narrower:
+                case SkosPredicateType.InScheme:
+                case SkosPredicateType.HasTopConcept:
+                case SkosPredicateType.Member: {
+                    this.addReference(po,skosResourceManager.getResource(po.object),iconDefinition);
+                    break;
+                }
+                case SkosPredicateType.Notation: {
+                    this.notations.push(po.object);
+                    break;
+                }
+                case SkosPredicateType.Type: {
+                    switch(objectText){
+                        case iridefs.concept: this.types.push(SkosSubjectType.Concept);break;
+                        case iridefs.conceptScheme: this.types.push(SkosSubjectType.ConceptScheme);break;
+                        case iridefs.collection: this.types.push(SkosSubjectType.Collection);break;
+                    }
+                    break;
+                }
+            }
+        });
+    }
+
+    getSubtree(result:SkosResource[]=[]):SkosResource[]{
+        if (result.includes(this)){return result;}
+        result.push(this);
+        let narrowers = this.narrowers();
+        for (let narrower of narrowers) {
+            narrower.getSubtree(result);
         }
-    });
+        return result;
+    }
+
+    removeIntersectingoccurences(locations:vscode.Location[]):void{
+        this.withAlloccurences(occurence => {
+            for (let location of locations){
+                if (occurence.document.uri.fsPath === location.uri.fsPath
+                    && location.range.intersection(occurence.location().range)){
+                    return true;
+                }
+            }
+            return false;
+        },true);
+    }
+
+    private withAlloccurencesOfArray(array:Occurence[],callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false){
+        for (let i = array.length-1; i >= 0; i--){
+            if (callback(array[i]) && callbackIsDeleteCondition){
+                array.splice(i,1);
+            }
+        }  
+    }
+    withAlloccurences(callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false):void{
+        this.withAlloccurencesOfArray(this.idOccurences,callback,callbackIsDeleteCondition);
+        this.withAlloccurencesOfArray(this.notations,callback,callbackIsDeleteCondition);
+        this.withAlloccurencesOfArray(this.occurences,callback,callbackIsDeleteCondition);
+        this.references.map(r => r.predicateObject).concat(this.predicateObjects).forEach(po => {
+            if (po.predicate && callback(po.predicate) && callbackIsDeleteCondition){
+                delete po.predicate;
+            }
+            if (po.object){
+                if (po.object.literal && callback(po.object.literal) && callbackIsDeleteCondition){
+                    delete po.object.literal;
+                }
+                if (po.object.lang && callback(po.object.lang) && callbackIsDeleteCondition){
+                    delete po.object.lang;
+                }
+                if (callback(po.object) && callbackIsDeleteCondition){
+                    delete po.object;
+                }
+            }
+        });
+        this.withAlloccurencesOfArray(this.references.map(r => r.predicateObject),callback,callbackIsDeleteCondition);
+        this.withAlloccurencesOfArray(this.predicateObjects,callback,callbackIsDeleteCondition);
+    }
+
+    adjustLocations(changeEvents: vscode.TextDocumentChangeEvent[]){
+        this.withAlloccurences(occ => adjustOccurence(occ,changeEvents));
+    }
+
+    addDescriptions() {            
+        let pathMarkdown = "";
+        let pathsArray = this.getLabelPaths();
+        pathsArray.forEach(path => {
+            for (let i = path.length-1; i>=0; i--){
+                for (let j=path.length-1;j>=i;j--){
+                    pathMarkdown+="    ";
+                }
+                pathMarkdown+="- "+path[i]+"\n";
+            }	
+        });
+
+        let mds = new vscode.MarkdownString();
+        let label = this.getLabel();
+        mds.appendMarkdown(label+"\n---\n");
+        mds.appendMarkdown(pathMarkdown);
+        this.description=mds;
+    }
+
+    private getLabelPaths():string[][] {
+        return this.getParentPaths().map(path => path.map(resource => resource.getLabel()));
+    }
+
+    private getParentPaths(path:SkosResource[]=[]):SkosResource[][]{
+        if (path.includes(this)){return [path];}
+        let result:SkosResource[][]=[];
+        path = path.concat([this]);
+        let parents = this.parents();
+        parents.forEach(parent => {
+            result = result.concat(parent.getParentPaths(path));
+        });
+        if (parents.length === 0){
+            result.push(path);
+        }
+        return result;
+    }
+
+    getLabel():string{
+        let labels = <string[]>this.predicateObjects
+            .filter(po => po.predicate.type === SkosPredicateType.Label && po.object.lang?.getText()==="en")
+            .map(po => po.object.literal?.getText())
+            .filter(label => label !== undefined);
+        return labels.length>0&&labels[0] || this.id;
+    }
 }
 
-export function getObjectValuesByPredicate(predicate:string|string[],s:SkosResource):string[]{
-    return getStatementsByPredicate(predicate,s).map(x => x.object.text);
+export class Occurence {
+    document:TurtleDocument;
+    documentOffset:{
+        start:number;
+        end:number;
+    }={
+        start:0,
+        end:0
+    };
+    location():vscode.Location{
+        let range:vscode.Range;
+        if (!this.document.vscDocument){
+            range = new vscode.Range(
+                new vscode.Position(0,0),
+                new vscode.Position(0,0)
+            );
+        } else {
+            range = new vscode.Range(
+                this.document.vscDocument?.positionAt(this.documentOffset.start),
+                this.document.vscDocument?.positionAt(this.documentOffset.end)
+            );
+        }
+        return new vscode.Location(this.document.uri,range);
+    }
+
+    constructor(uri:vscode.Uri,documentOffset:{start:number;end:number;}){
+        this.document=turtleDocuments.get(uri);
+        this.documentOffset = documentOffset;
+    }
+    async init(){
+        await this.document.init();
+        return this;
+    }
+
+    getText():string{
+        return this.document.text?.substring(this.documentOffset.start,this.documentOffset.end) || "";
+    }
+    getPrefixResolvedText():string{
+        let t = this.getText();
+        return prefixManager.resolve(this.document.uri,t) || t;
+    }
+
+    async getSubOccurencesOfMatchAndGroups(regexp:RegExp,onlyFirstMatch=false):Promise<GetSubOccurencesOfMatchAndGroupsResult[]>{
+        let textWithComments = this.getText();
+        let removeCommentsResult = removeComments(textWithComments);
+        let result:GetSubOccurencesOfMatchAndGroupsResult[]=[];
+
+        regexp.lastIndex=-1;
+        let match:RegExpExecArray|null;
+        while (match = regexp.exec(removeCommentsResult.text)){
+            let offset_start = this.documentOffset.start + this.adjustOffsetWithCommentOffsets(match.index,removeCommentsResult.comment_offsets);
+            let offset_end = this.documentOffset.start + this.adjustOffsetWithCommentOffsets(match.index+match[0].length,removeCommentsResult.comment_offsets);
+            let subresult:GetSubOccurencesOfMatchAndGroupsResult = {
+                matchOccurence: await new Occurence(
+                    this.document.uri,
+                    {
+                        start: offset_start,
+                        end:offset_end
+                    }
+                ).init(),
+                groupsOccurences:{}
+            };
+            if (match.groups){
+                for (let group of Object.keys(match.groups)){
+                    let groupmatch = (<{[key: string]: string;}>(<RegExpExecArray>match).groups)[group];
+                    if (!groupmatch){continue;}
+                    let offset_start = this.documentOffset.start + this.adjustOffsetWithCommentOffsets(
+                        match.index + match[0].indexOf(groupmatch),
+                        removeCommentsResult.comment_offsets
+                    );
+                    let offset_end = this.documentOffset.start + this.adjustOffsetWithCommentOffsets(
+                        match.index + match[0].indexOf(groupmatch) + groupmatch.length,
+                        removeCommentsResult.comment_offsets
+                    );
+                    subresult.groupsOccurences[group] = await new Occurence(
+                        this.document.uri,
+                        {
+                            start: offset_start,
+                            end:offset_end
+                        }
+                    ).init();
+                }
+            }
+            result.push(subresult);
+            if (!regexp.global || onlyFirstMatch){
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    adjustOffsetWithCommentOffsets(offset:number,comment_offsets: {
+        start: number,
+        end: number
+    }[]):number{
+        for (let i = 0; i < comment_offsets.length; i++){
+            if (comment_offsets[i].start < offset){
+                offset += comment_offsets[i].end - comment_offsets[i].start;
+            }
+        }
+        return offset;
+    }
 }
 
-export interface SkosResource {
-    concept:LocatedSubject;
-    statements:LocatedPredicateObject[];
-	children:SkosResource[];
-	parents:SkosResource[];
+interface SkosReference {
+    resource:SkosResource;
+    external:boolean;
+    predicateObject:SkosPredicateObject;
+    iconDefinition?:IconDefinition;
+}
+
+interface GetSubOccurencesOfMatchAndGroupsResult {
+    matchOccurence: Occurence;
+    groupsOccurences:{[id:string]: Occurence};
+}
+
+export class SkosPredicateObject extends Occurence {
+    predicate:SkosPredicate;
+    object:SkosObject;
+    constructor(uri:vscode.Uri,documentOffset:{start:number,end:number}, predicate:SkosPredicate,object:SkosObject){
+        super(uri,documentOffset);
+        this.predicate = predicate;
+        this.object = object;
+    }
+}
+
+export class SkosPredicate extends Occurence{
+    type:SkosPredicateType=SkosPredicateType.Unclassified;
+    evaluateType(predicateText?:string):void {
+        let text = predicateText || this.getPrefixResolvedText() || "";
+        switch(text){
+            case iridefs.broader: this.type = SkosPredicateType.Broader; break;
+            case iridefs.inScheme: this.type = SkosPredicateType.InScheme; break;
+            case iridefs.member: this.type = SkosPredicateType.Member; break;
+            case iridefs.narrower: this.type = SkosPredicateType.Narrower; break;
+            case iridefs.notation: this.type = SkosPredicateType.Notation; break;
+            case iridefs.prefLabel: this.type = SkosPredicateType.Label; break;
+            case iridefs.topConceptOf: this.type = SkosPredicateType.InScheme; break;
+            case iridefs.hasTopConcept: this.type = SkosPredicateType.HasTopConcept; break;
+            case iridefs.type: this.type = SkosPredicateType.Type; break;
+        }
+    }
+}
+
+export class SkosObject extends Occurence{
+    literal?:Occurence;
+    lang?:Occurence;
+    type:SkosObjectType=SkosObjectType.Unclassified;
+}
+
+export enum SkosObjectType {
+    Unclassified,
+    Literal,
+    Iri,
+    Numeric,
+    Boolean
+}
+
+class PrefixManager{
+    prefixes:Prefix[]=[];
+    
+    apply(uri:vscode.Uri,s:string):string|undefined{        
+        let matchingPrefix = this.prefixes.filter(p => p.uri === uri && s.startsWith(p.long.substring(0,p.long.length-1)));
+        if (matchingPrefix.length>0){
+            let prefix = matchingPrefix[0];
+            let result = s.replace(prefix.long.substring(0,prefix.long.length-1),prefix.short);
+            return result.substr(0,result.length-1);
+        }
+    }
+
+    resolve(uri:vscode.Uri,s:string):string|undefined{        
+        if (s === "a"){return iridefs.type;}
+        let matchingPrefix = this.prefixes.filter(p => p.uri===uri && s.startsWith(p.short));
+        if (matchingPrefix.length>0) {
+            let prefix = matchingPrefix[0];
+            let end = s.substr(prefix.short.length);
+            return prefix.long.substr(0,prefix.long.length-1)+end+">";
+        }
+    }
+
+    getSkosPrefix(uri:vscode.Uri):string|undefined{
+        let prefix = this.prefixes.filter(p => p.uri === uri && p.long === iridefs.skosBase);
+        return prefix[0]?.short;
+    }
+
+    addPrefix(uri:vscode.Uri, short:string, long:string){
+        this.prefixes.push(new Prefix(uri,short,long));
+    }
+
+    getShortByLong(uri:vscode.Uri, long:string):string|undefined{
+        let matches = this.prefixes.filter(p => p.uri === uri && p.long === long);
+        return matches && matches[0] && matches[0].short;
+    }
+
+    getPrefixByShortCandidate(uri:vscode.Uri, candidate:string):Prefix|undefined{
+        let candidateStart = candidate.substring(0,candidate.indexOf(":")+1);
+        let matches = this.prefixes.filter(p => p.short === candidateStart);
+        return matches && matches[0];
+    }
+}
+
+export const prefixManager = new PrefixManager();
+
+class Prefix{
+    uri: vscode.Uri;
+    short: string;
+    long: string;
+    constructor(uri:vscode.Uri, short:string, long:string){
+        this.uri = uri;
+        this.short = short;
+        this.long = long;
+    }
+}
+
+export enum SkosPredicateType {
+    Unclassified,
+    Type,
+    Label,
+    Notation,
+    Broader,
+    InScheme,
+    HasTopConcept,
+    Narrower,
+    Member
+}
+
+export enum SkosSubjectType {
+    Unclassified,
+    Concept,
+    ConceptScheme,
+    Collection
+}
+
+export function getEmptySkosSubject(concept:{}):ISkosResource{
+    return {
+        concept:concept,
+        statements:[],
+        children:[],
+        parents:[],
+        virtual:true,
+        description:new vscode.MarkdownString(""),
+        occurences:[],
+        treeviewNodes:[]
+    };
+}
+
+export interface ISkosResource {
+    concept:{};
+    statements:{}[];
+	children:ISkosResource[];
+	parents:ISkosResource[];
 	virtual?:boolean;
 	description:vscode.MarkdownString;
 	treeviewNodes:SkosNode[];
-	occurances:{
+	occurences:{
         location:vscode.Location,
         documentOffset:{
             start:number;
@@ -301,14 +617,4 @@ export interface SkosResource {
         }
     }[];
     icon?:string;
-}
-
-interface CustomIconDefinition {
-	rule: {
-		subject?: string;								
-		predicate?: string;
-		object?: string;
-	};
-	icon: string;
-	target: "subject"|"object";
 }

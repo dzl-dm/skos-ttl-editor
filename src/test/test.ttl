@@ -1,15 +1,5 @@
-@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs:	<http://www.w3.org/2000/01/rdf-schema#> .
-@prefix owl:	<http://www.w3.org/2002/07/owl#> .
-@prefix dc:	<http://purl.org/dc/elements/1.1/> .
 @prefix skos: 	<http://www.w3.org/2004/02/skos/core#> .
-@prefix xsd:	<http://www.w3.org/2001/XMLSchema#> .
-@prefix dwh:	<http://sekmi.de/histream/dwh#> .
-@prefix snomed: <http://purl.bioontology.org/ontology/SNOMEDCT/> .
-@prefix loinc: <http://loinc.org/owl#> .
 @prefix :	<http://data.dzl.de/ont/dwh#> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-@prefix prov: 	<http://www.w3.org/ns/prov#> .
 
 
 :TestResource1 a skos:Concept ;
@@ -39,4 +29,72 @@
 	skos:prefLabel "Test Resource 2.1.1.1"@en ;
 	skos:broader :TestResource211 ;
 	skos:narrower :TestResource21 ;
+.
+
+:TestScheme1 a skos:ConceptScheme ;
+	skos:prefLabel "Test Scheme 1"@en ;
+	skos:hasTopConcept :TestResource4 ;
+.
+
+:TestResource3 a skos:Concept ;
+	skos:prefLabel "Test Resource 3"@en ;
+	skos:topConceptOf :TestScheme1 ;
+.
+
+:TestResource31 a skos:Concept ;
+	skos:prefLabel "Test Resource 3.1"@en ;
+	skos:broader :TestResource3 ;
+	skos:inScheme :TestScheme1 ;
+.
+
+:TestResource311 a skos:Concept ;
+	skos:prefLabel "Test Resource 3.1.1"@en ;
+	skos:broader :TestResource31 ;
+.
+
+:TestResource3111 a skos:Concept ;
+	skos:prefLabel "Test Resource 3.1.1.1"@en ;
+	skos:inScheme :TestScheme1 ;
+	skos:broader :TestResource311 ;
+.
+
+:TestResource4 a skos:Concept ;
+	skos:prefLabel "Test Resource 4"@en ;
+.
+
+:TestResource41 a skos:Concept ;
+	skos:prefLabel "Test Resource 4.1"@en ;
+	skos:prefLabel "Test Resource 4.1"@en ;
+.
+
+:TestCollection1 a skos:Collection ;
+	skos:prefLabel "Test Resource 5"@en ;
+	skos:member :TestResource51 ;
+	skos:member :TestResource52 ;
+	skos:member :TestResource53 ;
+	skos:member :TestResource54 ;
+	skos:member unknownPrefix:TestResource55 ;
+.
+
+:TestResource51 a skos:concept ;
+	skos:prefLabel "Test Resource 5.1"@en ;
+.
+
+:TestResource52 a skos:Concept ;
+	a skos:Collection ;
+	a skos:ConceptScheme ;
+	skos:prefLabel "Test Resource 5.2"@en ;
+.
+
+:TestResource53 a skos:Concept ;
+	skos:prefLabel "Test Resource 5.3"@en ;
+	skos:prefLabel "Test Resource 5.3 label duplicate"@en ;
+.
+
+:TestResource54 a skos:Concept ;
+	skos:prefLabel "Test Resource 5.4" ;
+.
+
+unknownPrefix:TestResource55 a skos:Concept ;
+	skos:prefLabel "Test Resource 5.5"@en ;
 .

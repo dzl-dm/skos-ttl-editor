@@ -2,89 +2,67 @@ import * as vscode from 'vscode';
 import { SkosOutlineProvider } from './outline';
 import { SkosNode } from './skosnode';
 import * as parser from './parser';
-import { SkosParser, iridefs } from './parser';
-import { SkosResource, SkosResourceHandler, getObjectValuesByPredicate } from './skosresourcehandler';
-import { DocumentHandler } from './documenthandler';
-import { SemanticHandler } from './semantichandler';
+import { iridefs } from './parser';
+import { ISkosResource, skosResourceManager, prefixManager, SkosSubjectType } from './skosresourcehandler';
+import { DocumentHandler, getText, turtleDocuments } from './documenthandler';
 import { LoadingHandler } from './loadinghandler';
 
 
-let allSkosResources: { [id: string] : { [id: string] : SkosResource; }} = {};
-const mergedSkosResources: { [id: string] : SkosResource; } = {};
-let skosResourceHandler = new SkosResourceHandler({mergedSkosResources,allSkosResources});
-let skosParser = new SkosParser(skosResourceHandler);
-let documentHandler = new DocumentHandler({
-	mergedSkosResources,
-	skosResourceHandler,
-	skosParser
-});
+let allSkosResources: { [id: string] : { [id: string] : ISkosResource; }} = {};
+const mergedSkosResources: { [id: string] : ISkosResource; } = {};
+let documentHandler = new DocumentHandler();
 let loadingHandler:LoadingHandler;
 
 export function activate(context: vscode.ExtensionContext) {
-	const skosOutlineProvider = new SkosOutlineProvider({
-		context,
-		mergedSkosResources,
-		skosResourceHandler		
-	});
+	const skosOutlineProvider = new SkosOutlineProvider(context);
 	loadingHandler = new LoadingHandler({
-		mergedSkosResources,
-		skosResourceHandler,
-		skosParser,
 		skosOutlineProvider,
-		documentHandler,
-		allSkosResources
+		documentHandler
 	});
 
 	vscode.commands.registerCommand('skos-ttl-editor.addConcept', (node:SkosNode) => {
 		let text = "${1::NEWCONCEPT"+Date.now()+"} a skos:Concept ;\n";
-		text += "\t"+iridefs.broader+" "+node.getConcept()+" ;\n";
-		text += "\t"+iridefs.prefLabel+" \"${2:prefered label}\"@en ;\n";
-		documentHandler.insertText(mergedSkosResources[node.getConcept()],text,"after").then(()=>{
+		text += "\t"+iridefs.broader+" "+node.getId()+" ;\n";
+		text += "\t"+iridefs.prefLabel+" \"${2:prefered label}\"@en ;\n.";
+		documentHandler.insertText(skosResourceManager.resources[node.getId()],text,"after").then(()=>{
 			vscode.window.showInformationMessage("Added concept \""+node.getLabel()+"\" to concept \""+node.getLabel()+"\".");
 		});
 	});
-	vscode.commands.registerCommand('skos-ttl-editor.appendToScheme', (node:SkosNode) => {
+	vscode.commands.registerCommand('skos-ttl-editor.appendToScheme', async (node:SkosNode) => {
 		vscode.window.showQuickPick(
-			Object.keys(mergedSkosResources)
-				.map(key => mergedSkosResources[key])
-				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
-				.map(s => s.concept.text)
-		).then(a => {
-			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
+			Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key])
+				.filter(resource => resource.types.includes(SkosSubjectType.ConceptScheme))
+				.map(resource => resource.id)
+		).then(iri => {
+			if (!iri || node.getTypes().includes(SkosSubjectType.ConceptScheme)) {return;}
 			documentHandler.insertText(
-				mergedSkosResources[node.getConcept()],
-				"\tskos:inScheme "+a+" ;",
+				node.getResource(),
+				"\t"+ iridefs.inScheme+" "+iri+" ;",
 				"append"
 			).then(()=>{
-				vscode.window.showInformationMessage("Added concept \""+node.getLabel()+"\" to scheme \""+a+"\".");
+				vscode.window.showInformationMessage("Added concept \""+node.getLabel()+"\" to scheme \""+iri+"\".");
 			});
 		});
 	});
-	vscode.commands.registerCommand('skos-ttl-editor.appendSubtreeToScheme', (node:SkosNode) => {
+	vscode.commands.registerCommand('skos-ttl-editor.appendSubtreeToScheme', async (node:SkosNode) => {
 		vscode.window.showQuickPick(
-			Object.keys(mergedSkosResources)
-				.map(key => mergedSkosResources[key])
-				.filter(s => getObjectValuesByPredicate(iridefs.type,s).includes(iridefs.conceptScheme))
-				.map(s => s.concept.text)
-		).then(a => {
-			if (!a || node.getTypes().includes(iridefs.conceptScheme)) {return;}
-			let concepts = skosResourceHandler.getDescendants(mergedSkosResources[node.getConcept()]).filter(s => !getObjectValuesByPredicate(iridefs.inScheme,s).includes(a));
+			Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key])
+				.filter(resource => resource.types.includes(SkosSubjectType.ConceptScheme))
+				.map(resource => resource.id)
+		).then(iri => {
+			if (!iri || node.getTypes().includes(SkosSubjectType.ConceptScheme)) {return;}
+			let resources = node.getResource().getSubtree().filter(resource => !resource.inScheme(skosResourceManager.resources[iri]));
 			documentHandler.insertText(
-				concepts,
-				"\tskos:inScheme "+a+" ;",
+				resources,
+				"\tskos:inScheme "+iri+" ;",
 				"append"
 			).then(()=>{
-				vscode.window.showInformationMessage("Added "+concepts.length+" concepts to scheme \""+a+"\".");
+				vscode.window.showInformationMessage("Added "+resources.length+" concepts to scheme \""+iri+"\".");
 			});
 		});
 	});
 	vscode.commands.registerCommand('skos-ttl-editor.selectConcept', (node:SkosNode) => { 
 		selectTextSnippet(node);
-	});
-
-	let initialLoadingPromise = loadingHandler.loadTextDocuments({
-		documents:[vscode.window.activeTextEditor?.document],
-		inputThroughTyping: false
 	});
 	
 	let inputDelay:NodeJS.Timeout;
@@ -106,32 +84,30 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.onDidChangeTextEditorSelection((selection)=>{
 		if (!loadingHandler.queuedChangeEvents){
 			if (selection.kind !== vscode.TextEditorSelectionChangeKind.Mouse) { return; }
-			let selectedConcepts = documentHandler.getAffectedResourcesByDocumentAndRange([{document: selection.textEditor.document,range: selection.selections[0]}]);
-			if (selectedConcepts.length>0) { 
-				skosOutlineProvider.selectTreeItem(selectedConcepts[0].treeviewNodes[0]); 
+			let selectedResources = skosResourceManager.getIntersectionResources(selection.textEditor.document.uri,selection.selections[0]);
+			if (selectedResources.length>0 && selectedResources[0].treeNode) { 
+				skosOutlineProvider.selectTreeItem(selectedResources[0].treeNode); 
 			}
 		}
 	});
 
-	vscode.window.onDidChangeActiveTextEditor(changeEvent => {
-		if (!vscode.window.activeTextEditor){return;}
-		if (!Object.keys(allSkosResources).includes(vscode.window.activeTextEditor.document.uri.path)){
-			loadingHandler.loadTextDocuments({
-				documents:[vscode.window.activeTextEditor?.document],
-				inputThroughTyping: false
-			});
+	vscode.window.onDidChangeActiveTextEditor((editor) => {
+		if (editor){
+			loadingHandler.loadingProcedure([editor.document]);
 		}
 	});
+
+	loadingHandler.loadingProcedure([vscode.window.activeTextEditor?.document]);
 
 	context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider(
 			'turtle', 
-			new CompletionItemProvider(mergedSkosResources), 
+			new CompletionItemProvider(), 
 			':',' ')
 		);
 	context.subscriptions.push(
 		vscode.languages.registerHoverProvider(
-			'turtle', new ConceptHoverProvider(initialLoadingPromise)));
+			'turtle', new ConceptHoverProvider()));
 	context.subscriptions.push(
 		vscode.languages.registerDocumentSymbolProvider(
 			'turtle', new SkosDocumentSymbolProvider(mergedSkosResources)));
@@ -140,18 +116,16 @@ export function activate(context: vscode.ExtensionContext) {
 			'turtle', new ConceptDefinitionProvider(mergedSkosSubjects)));*/
 	context.subscriptions.push(
 		vscode.languages.registerImplementationProvider(
-			'turtle', new ConceptImplementationProvider(mergedSkosResources)));
+			'turtle', new ConceptImplementationProvider()));
 	context.subscriptions.push(
 		vscode.languages.registerReferenceProvider(
-			'turtle', new ConceptReferenceProvider(mergedSkosResources)));
+			'turtle', new ConceptReferenceProvider()));
 
 	vscode.commands.registerCommand('skos-ttl-editor.reload', () => {
 		Object.keys(allSkosResources).forEach(key => delete allSkosResources[key]);
 		Object.keys(mergedSkosResources).forEach(key => delete mergedSkosResources[key]);		
 		if (vscode.window.activeTextEditor){
-			loadingHandler.loadTextDocuments({
-				documents: [vscode.window.activeTextEditor.document]
-			});	
+			loadingHandler.loadingProcedure([vscode.window.activeTextEditor.document]);	
 		}
 	});	
 	vscode.commands.registerCommand('skos-ttl-editor.complementFiles', () => {
@@ -160,19 +134,17 @@ export function activate(context: vscode.ExtensionContext) {
 				if (files.length === 0){
 					vscode.window.showInformationMessage("No files to load. Did you open a folder in Visual Studio Code?");
 				}
-				loadingHandler.loadTextDocuments({
-					documents: files.filter(file => !Object.keys(allSkosResources).includes(file.path))
-						.map(file => vscode.workspace.openTextDocument(file.path)),
-					inputThroughTyping: false
-				});
+				loadingHandler.loadingProcedure(
+					files.map(file => vscode.workspace.openTextDocument(file.path))
+				);
 			});		
 		}
 	});	
 }
 
 class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
-	private sss:{ [id: string] : SkosResource; }={};
-	public constructor(sss:{ [id: string] : SkosResource; }){
+	private sss:{ [id: string] : ISkosResource; }={};
+	public constructor(sss:{ [id: string] : ISkosResource; }){
 		this.sss = sss;
 	}
 	provideDocumentSymbols(document: vscode.TextDocument, token: vscode.CancellationToken): vscode.ProviderResult<vscode.SymbolInformation[] | vscode.DocumentSymbol[]> {
@@ -185,7 +157,7 @@ class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 					"", 
 					new vscode.Location(
 						document.uri,
-						document.lineAt(this.sss[key].occurances[0].location.range.start.line).range
+						document.lineAt(this.sss[key].occurences[0].location.range.start.line).range
 					)
 				));
 			}
@@ -195,82 +167,67 @@ class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 }
 
 class ConceptReferenceProvider implements vscode.ReferenceProvider {
-	private sss:{ [id: string] : SkosResource; }={};
-	public constructor(sss:{ [id: string] : SkosResource; }){
-		this.sss = sss;
-	}	
 	provideReferences(document: vscode.TextDocument, position: vscode.Position, context: vscode.ReferenceContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {
 		let referenceIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		referenceIri = skosParser.resolvePrefix(referenceIri,document) || referenceIri;
-		let locations = Object.keys(this.sss).map(key => this.sss[key].statements)
-			.reduce((prev,curr,index) => prev = prev.concat(curr),[])
-			.filter(s =>  s.object.text === referenceIri)
-			.map(s => s.location);
+		referenceIri = prefixManager.resolve(document.uri,referenceIri) || referenceIri;
+		let locations = skosResourceManager.resources[referenceIri]?.references.filter(reference => reference.external)
+		 	.map(reference => reference.predicateObject.location());
 		return locations;
 	}
 }
 
 class ConceptImplementationProvider implements vscode.ImplementationProvider {
-	private sss:{ [id: string] : SkosResource; }={};
-	public constructor(sss:{ [id: string] : SkosResource; }){
-		this.sss = sss;
-	}	
 	provideImplementation(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location | vscode.Location[] | vscode.LocationLink[]> {
 		let implementationIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-		implementationIri = skosParser.resolvePrefix(implementationIri,document) || implementationIri;
-		let items = Object.keys(this.sss).filter(i => i===implementationIri);
-		return this.sss[items[0]].occurances.map(o => o.location);
+		implementationIri = prefixManager.resolve(document.uri,implementationIri) || implementationIri;
+		let item = skosResourceManager.resources[implementationIri];
+		return item && item.occurences.map(o => o.location()) || null;
 	}
 }
 
 class ConceptHoverProvider implements vscode.HoverProvider {
-	private sssp:Promise<{ [id: string] : SkosResource; }>;
-	public constructor(sssp:Promise<{ [id: string] : SkosResource; }>){
-		this.sssp = sssp;
-	}
     public provideHover(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken):Promise<vscode.Hover> {
 		let result:Promise<vscode.Hover>=new Promise(resolve => {
-			this.sssp.then(sss => {
-				let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
-				hoveredIri = skosParser.resolvePrefix(hoveredIri,document) || hoveredIri;
-				let items = Object.keys(sss).filter(i => i===hoveredIri);
-				if (items.length>0) {
-					resolve(new vscode.Hover(sss[items[0]].description));
-				} else {
-					resolve(undefined);
-				}
-			});
+			let hoveredIri = document.getText(document.getWordRangeAtPosition(position,new RegExp(parser.iri)));
+			hoveredIri = prefixManager.resolve(document.uri,hoveredIri) || hoveredIri;
+			let resource = skosResourceManager.resources[hoveredIri];
+			if (resource){
+				resolve(new vscode.Hover(resource.description));
+			} else {
+				resolve(undefined);
+			}
 		});
 		return result;
     }
 }
 
 class CompletionItemProvider implements vscode.CompletionItemProvider {
-	private sss:{ [id: string] : SkosResource; }={};
 	private customAutoCompletePrefixedPredicates: { [id: string] : string[]; }=vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompletePrefixedPredicates")||{};
 	private customAutoCompletePrefixedObjects: { [id: string] : string[]; }=vscode.workspace.getConfiguration().get("skos-ttl-editor.customAutoCompletePrefixedObjects")||{};
-	public constructor(sss:{ [id: string] : SkosResource; }){
-		this.sss = sss;
-	}
+
     public provideCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext):vscode.CompletionItem[] {
-		let objectrange = document.getWordRangeAtPosition(position,new RegExp(skosParser.getSkosPrefix(document)+"(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
+		//after typing an skos predicate
+		let objectrange = document.getWordRangeAtPosition(position,new RegExp(prefixManager.getSkosPrefix(document.uri)+"(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
 		if (objectrange) {
-			return Object.keys(this.sss).map(key => this.sss[key]).map(ss => {
-				let ci = new vscode.CompletionItem(skosResourceHandler.getLabel(ss),vscode.CompletionItemKind.Property);
-				ci.insertText = skosParser.applyPrefix(ss.concept.text,document);
-				ci.documentation = ss.description;
+			return Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).map(resource => {
+				let ci = new vscode.CompletionItem(resource.getLabel(),vscode.CompletionItemKind.Property);
+				ci.insertText = prefixManager.apply(document.uri,resource.id);
+				ci.documentation = resource.description;
 				return ci;
 			});
 		}
 		
+		//get trigering word
 		let irirange = document.getWordRangeAtPosition(position,new RegExp(parser.iri));
 		if (!irirange){ return []; }
 		let triggerWord = document.getText(irirange);
 		let result:vscode.CompletionItem[] = [];
 		if (triggerWord === ""){
-			return result;
+			return [];
 		} 
-		let predicateIriref = Object.keys(this.customAutoCompletePrefixedPredicates).filter(key => skosParser.getPrefix(key,document)===triggerWord)[0];
+
+		//add custom predicates and objects
+		let predicateIriref = Object.keys(this.customAutoCompletePrefixedPredicates).filter(key => prefixManager.getShortByLong(document.uri,key)===triggerWord)[0];
 		if (predicateIriref) {
 			result = result.concat(this.customAutoCompletePrefixedPredicates[predicateIriref].sort().map(prop => {
 				let ci = new vscode.CompletionItem(prop,vscode.CompletionItemKind.Property);
@@ -278,7 +235,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 				return ci;
 			}));
 		} 
-		let objectIriref = Object.keys(this.customAutoCompletePrefixedObjects).filter(key => skosParser.getPrefix(key,document)===triggerWord)[0];
+		let objectIriref = Object.keys(this.customAutoCompletePrefixedObjects).filter(key => prefixManager.getShortByLong(document.uri,key)===triggerWord)[0];
 		if (objectIriref) {
 			result = result.concat(this.customAutoCompletePrefixedObjects[objectIriref].sort().map(prop => {
 				let ci = new vscode.CompletionItem(prop,vscode.CompletionItemKind.Constant);
@@ -286,24 +243,30 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 				return ci;
 			}));
 		} 
-		if (triggerWord === skosParser.getSkosPrefix(document)) {
+
+		//add skos predicates
+		if (triggerWord === prefixManager.getSkosPrefix(document.uri)) {
 			result = result.concat(["broader","narrower","notation","prefLabel",
 				"altLabel","member","editorialNote","Concept","ConceptScheme",
 				"inScheme","hasTopConcept","topConceptOf","Collection","related"].sort().map(prop => new vscode.CompletionItem(prop,vscode.CompletionItemKind.Property)));
 		} 
-		let prefix = skosParser.getPrefixes(document).filter(p => p.short === triggerWord.substring(0,triggerWord.indexOf(":")+1))[0];
-		let iriref = skosParser.getPrefixes(document).filter(p => p.short === triggerWord.substring(0,triggerWord.indexOf(":")+1))[0]?.long;
-		iriref = iriref.substring(0,iriref.length-1);
-		result = result.concat(Object.keys(this.sss)
-			.filter(c => c.startsWith(iriref))
-			.map(c => {
-				let name = c.replace(iriref,"");
-				name = name.substring(0,name.length-1);
-				let ci = new vscode.CompletionItem(name,vscode.CompletionItemKind.Reference);
-				ci.documentation = this.sss[c].description;
-				return ci;
-			})
-			.sort());
+
+		//add known resource ids
+		let prefix = prefixManager.getPrefixByShortCandidate(document.uri,triggerWord);
+		if (prefix){
+			let iriref = prefix.long;
+			iriref = iriref.substring(0,iriref.length-1);
+			result = result.concat(Object.keys(skosResourceManager.resources)
+				.filter(key => key.startsWith(iriref))
+				.map(key => {
+					let name = key.replace(iriref,"");
+					name = name.substring(0,name.length-1);
+					let ci = new vscode.CompletionItem(name,vscode.CompletionItemKind.Reference);
+					ci.documentation = skosResourceManager.resources[key].description;
+					return ci;
+				})
+				.sort());			
+		} 
 		return result;
 	}
 }
@@ -337,3 +300,22 @@ function showQuickPicksForConceptTextSelection(locations:vscode.Location[],index
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
+
+export async function asyncFilter<T>(arr:T[], callback:(item:T)=>{}):Promise<T[]> {
+	const fail = Symbol();
+	return <Promise<T[]>><unknown>((await Promise.all(arr.map(async (item) => (await callback(item)) ? item : fail))).filter(i => i !== fail));
+}
+export async function asyncForeach<T>(arr:T[]|Promise<T[]>, callback:(item:T)=>Promise<void>):Promise<void> {
+	if (!Array.isArray(arr)){
+		arr = await arr;
+	}
+	await Promise.all(arr.map(item => callback(item) ));
+}    
+export async function asyncMap<T,U>(arr:T[]|Promise<T[]>, callback:(item:T)=>Promise<U>):Promise<U[]> {
+	if (!Array.isArray(arr)){
+		arr = await arr;
+	}
+	return Promise.all(arr.map(item => callback(item)));
+}
+
+export async function wait (ms:number){ await new Promise((resolve) => { setTimeout(() => { resolve(); }, ms); }); }

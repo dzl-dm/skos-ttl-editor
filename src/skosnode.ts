@@ -1,81 +1,88 @@
-  import * as vscode from 'vscode';
-import { SkosResource } from './skosresourcehandler';
-  
-  export class SkosNode {
-	private concept:string;
+import * as vscode from 'vscode';
+import { SkosSubjectType, SkosResource } from './skosresourcehandler';
+
+export class SkosNode {
 	private label:string|undefined;
 	private children:SkosNode[]=[];
 	private parent:SkosNode|undefined;
 	private notations:string[]=[];
-	private virtual?:boolean;
-	private description:vscode.MarkdownString|undefined;
-    private iconname:string|undefined;
-    private types:string[]=[];
-    private occurances:{
-        location:vscode.Location
-    }[]=[];
+    private skosResource:SkosResource;
 
-    constructor(concept:string){
-        this.concept = concept || "root";
+    constructor(resource:SkosResource,parent?:SkosNode){
+        this.skosResource = resource;
+        if (resource.id.includes("ollection")){
+            let a = 1;
+        }
+        this.parent = parent;
     }
-    setNodeAttributes(attributes: {
-        children?:SkosNode[],
-        parent?:SkosNode,
-        label?:string,
-        notations?:string[],
-        iconname?:string,
-        types?:string[],
-        occurances?:{
-            location:vscode.Location
-        }[]
-    }){
-        if (attributes.children) {
-            this.children = attributes.children;
-        }
-        if (attributes.parent){
-            this.parent = attributes.parent;
-        }
-        if (attributes.label) {
-            this.label = attributes.label;
-        }
-        if (attributes.notations) {
-            this.notations = attributes.notations;
-        }
-        if (attributes.iconname) {
-            this.iconname = attributes.iconname;
-        }
-        if (attributes.occurances){
-            this.occurances = attributes.occurances;
-        }
-        if (attributes.types){
-            this.types = attributes.types;
-        }
+    init(){
+        this.label = this.skosResource.getLabel();
+        this.notations = this.skosResource.notations.map(n => n.getText());
     }
     getLabel(){
-        return this.label || this.concept;
+        return this.label || this.skosResource.id;
     }
     getChildren(){
         return this.children;
     }
-    getDescription(){
+    addChild(child:SkosNode){
+        this.children.push(child);
+    }
+    getNotations(){
         return this.notations.join(",");
     }
-    getConcept(){
-        return this.concept;
+    getId(){
+        return this.skosResource.id;
     }
     getIconname(){
-        return this.iconname;
+        let icons = this.skosResource.references.filter(reference => 
+            reference.iconDefinition 
+            && reference.iconDefinition.target==="subject"
+            && reference.resource === this.skosResource).map(reference => reference.iconDefinition?.icon);
+        return icons.length > 0 && icons[0] || undefined;
     }
     getParent(){
         return this.parent;
     }
     getLocations(){
-        return this.occurances.map(o => o.location);
+        return this.skosResource.occurences.map(o => o.location());
     }
-    getOccurances(){
-        return this.occurances;
+    getoccurences(){
+        return this.skosResource.occurences;
     }
-    getTypes():string[]{
-        return this.types;
+    getTypes():SkosSubjectType[]{
+        return this.skosResource.types;
+    }
+    getResource():SkosResource{
+        return this.skosResource;
     }
 }
+
+export interface IconDefinition {
+	rule: {
+		subject?: string;								
+		predicate?: string|string[];
+		object?: string;
+	};
+	icon: string;
+	target: "subject"|"object";
+}
+let customIconDefinitions:IconDefinition[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customIcons") || [];
+export const iconDefinitions:IconDefinition[]=(<IconDefinition[]>[
+    {
+        rule: {
+            predicate: ["a","<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"],
+            object: "<http://www.w3.org/2004/02/skos/core#ConceptScheme>"
+        },
+        icon: "dependency",
+        target: "subject"
+    },
+    {
+        rule: {
+            predicate: ["a","<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"],
+            object: "<http://www.w3.org/2004/02/skos/core#Collection>"
+        },
+        icon: "folder",
+        target: "subject"
+    }
+]).concat(customIconDefinitions);
