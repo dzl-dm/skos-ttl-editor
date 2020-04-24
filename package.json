@@ -96,8 +96,8 @@
 			"title": "SKOS Turtle Editor",
 			"properties": {
 				"skos-ttl-editor.parsingAndVerificationDelayAfterUserInput": {
-					"type":"number",
-					"default":500,
+					"type": "number",
+					"default": 500,
 					"description": "The delay after a user input before the changed document(s) will be parsed and verified."
 				},
 				"skos-ttl-editor.customAutoCompletePrefixedPredicates": {
@@ -218,13 +218,13 @@
 	"devDependencies": {
 		"@types/glob": "^7.1.1",
 		"@types/mocha": "^5.2.7",
-		"@types/node": "^12.11.7",
-		"@types/vscode": "^1.40.0",
+		"@types/node": "^12.12.37",
+		"@types/vscode": "^1.44.0",
 		"glob": "^7.1.5",
-		"mocha": "^6.2.2",
+		"mocha": "^6.2.3",
 		"tslint": "^5.20.0",
 		"typescript": "^3.8.3",
-		"vscode-test": "^1.2.2"
+		"vscode-test": "^1.3.0"
 	},
 	"dependencies": {
 		"vsce": "^1.74.0"

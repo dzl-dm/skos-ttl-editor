@@ -94,24 +94,6 @@ export class DocumentHandler {
             });
         });
     }
-
-    getAffectedResourcesByDocumentAndRange(fromoccurences:{document:vscode.TextDocument,range:vscode.Range}[]):SkosResource[]{
-		let affectedResources:SkosResource[]=[];
-		let keys = Object.keys(skosResourceManager.resources);
-		for (let j = 0; j < keys.length; j++){
-			let r = skosResourceManager.resources[keys[j]];
-			for (let i = 0; i < r.occurences.length;i++){
-				let occ = r.occurences[i];
-				for (let k = 0; k < fromoccurences.length; k++){
-                    let intersection = fromoccurences[k].range.intersection(occ.location().range);
-                    if (intersection){
-                        affectedResources.push(r);
-                    }
-				}
-			}
-		}
-		return affectedResources.filter((value,index,array)=>array.indexOf(value)===index);
-    }
 }
 
 export async function openTextDocument(uri:vscode.Uri):Promise<vscode.TextDocument|undefined>{

@@ -6,6 +6,7 @@ import { iridefs } from './parser';
 import { ISkosResource, skosResourceManager, prefixManager, SkosSubjectType } from './skosresourcehandler';
 import { DocumentHandler, getText, turtleDocuments } from './documenthandler';
 import { LoadingHandler } from './loadinghandler';
+import { resetDiagnostics } from './semantichandler';
 
 
 let allSkosResources: { [id: string] : { [id: string] : ISkosResource; }} = {};
@@ -122,8 +123,9 @@ export function activate(context: vscode.ExtensionContext) {
 			'turtle', new ConceptReferenceProvider()));
 
 	vscode.commands.registerCommand('skos-ttl-editor.reload', () => {
-		Object.keys(allSkosResources).forEach(key => delete allSkosResources[key]);
-		Object.keys(mergedSkosResources).forEach(key => delete mergedSkosResources[key]);		
+		Object.keys(skosResourceManager.resources).forEach(key => delete skosResourceManager.resources[key]);	
+		turtleDocuments.documents=[];
+		resetDiagnostics();
 		if (vscode.window.activeTextEditor){
 			loadingHandler.loadingProcedure([vscode.window.activeTextEditor.document]);	
 		}
