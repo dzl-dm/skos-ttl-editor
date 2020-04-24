@@ -10,14 +10,11 @@ export class SkosNode {
 
     constructor(resource:SkosResource,parent?:SkosNode){
         this.skosResource = resource;
-        if (resource.id.includes("ollection")){
-            let a = 1;
-        }
         this.parent = parent;
     }
     init(){
-        this.label = this.skosResource.getLabel();
-        this.notations = this.skosResource.notations.map(n => n.getText());
+        this.label = this.skosResource.label();
+        this.notations = this.skosResource.notations();
     }
     getLabel(){
         return this.label || this.skosResource.id;

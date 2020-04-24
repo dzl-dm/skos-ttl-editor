@@ -210,7 +210,7 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 		let objectrange = document.getWordRangeAtPosition(position,new RegExp(prefixManager.getSkosPrefix(document.uri)+"(broader|narrower|member|topConceptOf|hasTopConcept|related)\\s+"));
 		if (objectrange) {
 			return Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).map(resource => {
-				let ci = new vscode.CompletionItem(resource.getLabel(),vscode.CompletionItemKind.Property);
+				let ci = new vscode.CompletionItem(resource.label(),vscode.CompletionItemKind.Property);
 				ci.insertText = prefixManager.apply(document.uri,resource.id);
 				ci.documentation = resource.description;
 				return ci;

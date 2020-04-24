@@ -40,7 +40,7 @@ function refreshDiagnostics(){
     });
 }
 
-function reset(resources?:SkosResource[]){
+export function resetDiagnostics(resources?:SkosResource[]){
     if (resources){
         let resourceIds=resources.map(r => r.id);
         diagnostics = diagnostics.filter(d => !resourceIds.includes(d.resource.id));
@@ -50,14 +50,12 @@ function reset(resources?:SkosResource[]){
     refreshDiagnostics();
 }
 
-function refreshDiagnosticsRanges(){
+export function refreshDiagnosticsRanges(){
     diagnostics.forEach(d => d.diagnostic.range = d.occurence.location().range);
 }
 
 export async function checkSemantics(resources:SkosResource[],progressReport?:(percentage:number,message?:string)=>Promise<any>){
     //TODO: werden teilweise mehrfach hinzugefügt 
-    reset(resources);
-    refreshDiagnosticsRanges();
     if (progressReport){progressReport(0,"Label Check");}
     labelCheck(resources);
     if (progressReport){progressReport(20,"Type Check");}

@@ -4,7 +4,7 @@ import * as parser from './parser';
 import { SkosOutlineProvider } from './outline';
 import { DocumentHandler, sortLocations, connectLocations, turtleDocuments, adjustOccurence } from './documenthandler';
 import { wait } from './extension';
-import { checkSemantics } from './semantichandler';
+import { checkSemantics, resetDiagnostics, refreshDiagnosticsRanges } from './semantichandler';
 
 export class LoadingHandler {      
 	skosOutlineProvider:SkosOutlineProvider;
@@ -119,6 +119,8 @@ export class LoadingHandler {
 					skosResourceManager.resetResourceEvaluations(affectedResources);
 					skosResourceManager.removeResourcesWithoutOccurenceOrReference();
 					skosResourceManager.adjustLocations(changeEvents);
+					resetDiagnostics(affectedResources);
+					refreshDiagnosticsRanges();
 					locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
 				} else {
 					documentsToParse = resolvedDocuments.filter(document => !turtleDocuments.includes(document.uri));

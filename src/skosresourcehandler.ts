@@ -36,12 +36,9 @@ class SkosResourceManager {
                 let occurence = resource.occurences[i];
                 if (!occurence){continue;}
                 occurences.forEach(o => {
-                    if (occurence.document.uri.fsPath === o.document.uri.fsPath){
-                        //TODO: replace intersection function
-                        if (occurence.location().range.intersection(o.location().range)){
-                            result.push(resource);
-                            resource.removeIntersectingoccurences([o.location()]);
-                        }
+                    if (occurence.intersectsWith(o)){
+                        result.push(resource);
+                        resource.removeIntersectingoccurences(occurence);
                     }
                 });
             }
@@ -122,7 +119,6 @@ export class SkosResource {
     id:string;
     types:SkosSubjectType[]=[];
     idOccurences:Occurence[]=[];
-    notations:SkosObject[]=[];
     occurences:Occurence[]=[];
     description = new vscode.MarkdownString("");
     predicateObjects:SkosPredicateObject[]=[];
@@ -170,14 +166,26 @@ export class SkosResource {
         return this.broaderReferences().map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
     }
     broaderReferences():SkosReference[]{
-        return this.references.filter(r => !r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader 
+        return this.references.filter(r => 
+            !r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader 
             || r.external && r.predicateObject.predicate.type === SkosPredicateType.Narrower
-            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Member);
+            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Member
+        );
     }
     parents():SkosResource[]{
         return this.references.filter(r => !r.external && [SkosPredicateType.Broader,SkosPredicateType.InScheme].includes(r.predicateObject.predicate.type)
             || r.external && [SkosPredicateType.Narrower,SkosPredicateType.HasTopConcept,SkosPredicateType.Member].includes(r.predicateObject.predicate.type))
             .map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
+    }
+    label():string{
+        let labels = <string[]>this.predicateObjects
+            .filter(po => po.predicate.type === SkosPredicateType.Label && po.object.lang?.getText()==="en")
+            .map(po => po.object.literal?.getText())
+            .filter(label => label !== undefined);
+        return labels.length>0&&labels[0] || this.id;
+    }
+    notations():string[]{
+        return <string[]>this.predicateObjects.filter(po => po.predicate.type === SkosPredicateType.Notation && po.object.literal).map(po => po.object.literal?.getText());
     }
 
     addReference(po:SkosPredicateObject, resource:SkosResource, iconDefinition?:IconDefinition){
@@ -235,10 +243,6 @@ export class SkosResource {
                     this.addReference(po,skosResourceManager.getResource(po.object),iconDefinition);
                     break;
                 }
-                case SkosPredicateType.Notation: {
-                    this.notations.push(po.object);
-                    break;
-                }
                 case SkosPredicateType.Type: {
                     switch(objectText){
                         case iridefs.concept: this.types.push(SkosSubjectType.Concept);break;
@@ -261,30 +265,15 @@ export class SkosResource {
         return result;
     }
 
-    removeIntersectingoccurences(locations:vscode.Location[]):void{
-        this.withAlloccurences(occurence => {
-            for (let location of locations){
-                if (occurence.document.uri.fsPath === location.uri.fsPath
-                    && location.range.intersection(occurence.location().range)){
-                    return true;
-                }
-            }
-            return false;
+    removeIntersectingoccurences(occurence:Occurence):void{
+        this.withAllOccurences(o => {
+            return occurence.intersectsWith(o);
         },true);
     }
 
-    private withAlloccurencesOfArray(array:Occurence[],callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false){
+    private withAllOccurencesOfArray(array:Occurence[],callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false){
         for (let i = array.length-1; i >= 0; i--){
-            if (callback(array[i]) && callbackIsDeleteCondition){
-                array.splice(i,1);
-            }
-        }  
-    }
-    withAlloccurences(callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false):void{
-        this.withAlloccurencesOfArray(this.idOccurences,callback,callbackIsDeleteCondition);
-        this.withAlloccurencesOfArray(this.notations,callback,callbackIsDeleteCondition);
-        this.withAlloccurencesOfArray(this.occurences,callback,callbackIsDeleteCondition);
-        this.references.map(r => r.predicateObject).concat(this.predicateObjects).forEach(po => {
+            let po = (array[i] as SkosPredicateObject);
             if (po.predicate && callback(po.predicate) && callbackIsDeleteCondition){
                 delete po.predicate;
             }
@@ -299,13 +288,32 @@ export class SkosResource {
                     delete po.object;
                 }
             }
-        });
-        this.withAlloccurencesOfArray(this.references.map(r => r.predicateObject),callback,callbackIsDeleteCondition);
-        this.withAlloccurencesOfArray(this.predicateObjects,callback,callbackIsDeleteCondition);
+            if (callback(array[i]) && callbackIsDeleteCondition){
+                array.splice(i,1);
+            }
+        }  
+    }
+    withAllOccurences(callback:(occurence:Occurence)=>void|boolean,callbackIsDeleteCondition=false):void{
+        this.withAllOccurencesOfArray(this.idOccurences,callback,callbackIsDeleteCondition);
+        this.withAllOccurencesOfArray(this.occurences,callback,callbackIsDeleteCondition);
+        this.withAllOccurencesOfArray(this.predicateObjects,(occ)=>{
+            let result = callback(occ);
+            if (result){
+                if (callbackIsDeleteCondition){
+                    let index = this.references.map(r => r.predicateObject).indexOf(occ as SkosPredicateObject);
+                    if (index > -1){
+                        let rr = this.references[index].resource;
+                        rr.references.splice(rr.references.map(r => r.predicateObject).indexOf(occ as SkosPredicateObject),1);
+                        this.references.splice(index,1);
+                    }
+                }
+            }
+            return result;
+        },callbackIsDeleteCondition);
     }
 
     adjustLocations(changeEvents: vscode.TextDocumentChangeEvent[]){
-        this.withAlloccurences(occ => adjustOccurence(occ,changeEvents));
+        this.withAllOccurences(occ => adjustOccurence(occ,changeEvents));
     }
 
     addDescriptions() {            
@@ -321,14 +329,14 @@ export class SkosResource {
         });
 
         let mds = new vscode.MarkdownString();
-        let label = this.getLabel();
+        let label = this.label();
         mds.appendMarkdown(label+"\n---\n");
         mds.appendMarkdown(pathMarkdown);
         this.description=mds;
     }
 
     private getLabelPaths():string[][] {
-        return this.getParentPaths().map(path => path.map(resource => resource.getLabel()));
+        return this.getParentPaths().map(path => path.map(resource => resource.label()));
     }
 
     private getParentPaths(path:SkosResource[]=[]):SkosResource[][]{
@@ -343,14 +351,6 @@ export class SkosResource {
             result.push(path);
         }
         return result;
-    }
-
-    getLabel():string{
-        let labels = <string[]>this.predicateObjects
-            .filter(po => po.predicate.type === SkosPredicateType.Label && po.object.lang?.getText()==="en")
-            .map(po => po.object.literal?.getText())
-            .filter(label => label !== undefined);
-        return labels.length>0&&labels[0] || this.id;
     }
 }
 
@@ -377,6 +377,16 @@ export class Occurence {
             );
         }
         return new vscode.Location(this.document.uri,range);
+    }
+
+    intersectsWith(o:Occurence):boolean{
+        return this.document === o.document 
+            && (
+                this.documentOffset.start >= o.documentOffset.start && this.documentOffset.start <= o.documentOffset.end
+                || this.documentOffset.end >= o.documentOffset.start && this.documentOffset.end <= o.documentOffset.end
+                || o.documentOffset.start >= this.documentOffset.start && o.documentOffset.start <= this.documentOffset.end
+                || o.documentOffset.end >= this.documentOffset.start && o.documentOffset.end <= this.documentOffset.end                
+            );
     }
 
     constructor(uri:vscode.Uri,documentOffset:{start:number;end:number;}){
