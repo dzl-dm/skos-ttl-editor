@@ -83,12 +83,21 @@ export class LoadingHandler {
 		this.resetProgress();
 		await Promise.resolve(documents).then(async documents => {
 			let resolvedDocuments:vscode.TextDocument[]=[];
-			let documentsToParse:vscode.TextDocument[]=resolvedDocuments;
 			for (let i = documents.length; i >= 0; i--){
 				let document = await Promise.resolve(<vscode.TextDocument|undefined|Thenable<(vscode.TextDocument|undefined)>>documents[i]);
-				if (document && document.uri.fsPath.endsWith('.ttl')){
+				if (
+					document 
+					&& document.uri.fsPath.endsWith('.ttl')
+					&& (
+						changeEvents && changeEvents.map(ce => ce.document).includes(document)
+						|| !turtleDocuments.includes(document.uri)
+					)
+				){
 					resolvedDocuments.push(document);
 				}
+			}
+			if (resolvedDocuments.length===0){
+				return;
 			}
 			return vscode.window.withProgress({
 				location: vscode.ProgressLocation.Notification,
@@ -122,15 +131,13 @@ export class LoadingHandler {
 					resetDiagnostics(affectedResources);
 					refreshDiagnosticsRanges();
 					locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
-				} else {
-					documentsToParse = resolvedDocuments.filter(document => !turtleDocuments.includes(document.uri));
 				}
 
 				//parse
 				let parsingDocuments:Promise<SkosResource[]>[]=[];
 				this.totalProgressReport(progress,LoadingStep.Parsing,0);
-				for (let i = 0; i < documentsToParse.length; i++){
-					let document = documentsToParse[i];
+				for (let i = 0; i < resolvedDocuments.length; i++){
+					let document = resolvedDocuments[i];
 					if (cancelled) {break;}	
 					if (!document){continue;}		
 					let p = parser.parseTextDocument({
@@ -139,7 +146,7 @@ export class LoadingHandler {
 						progressReport:async (percantage:number, message?:string)=>this.totalProgressReport(
 							progress,
 							LoadingStep.Parsing,
-							Math.floor(i*100/documentsToParse.length + percantage/documentsToParse.length)
+							Math.floor(i*100/resolvedDocuments.length + percantage/resolvedDocuments.length)
 							,message
 						)
 					});

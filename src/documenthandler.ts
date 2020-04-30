@@ -183,7 +183,7 @@ export class TurtleDocument {
 export class TurtleDocuments {
     documents:TurtleDocument[] = [];
     get(uri:vscode.Uri):TurtleDocument{
-        let td = this.documents.find(doc => doc.uri === uri);
+        let td = this.documents.find(doc => doc.uri.fsPath === uri.fsPath);
         if (!td){
             td = new TurtleDocument(uri);
             this.documents.push(td);
@@ -191,7 +191,7 @@ export class TurtleDocuments {
         return td;
     }
     includes(uri:vscode.Uri):boolean{
-        return this.documents.find(doc => doc.uri === uri)!==undefined;
+        return this.documents.find(doc => doc.uri.fsPath === uri.fsPath)!==undefined;
     }
 }
 

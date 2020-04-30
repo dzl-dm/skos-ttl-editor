@@ -34,8 +34,17 @@ export class SkosNode {
     getIconname(){
         let icons = this.skosResource.references.filter(reference => 
             reference.iconDefinition 
-            && reference.iconDefinition.target==="subject"
-            && reference.resource === this.skosResource).map(reference => reference.iconDefinition?.icon);
+            && (
+                (
+                    reference.iconDefinition.target==="subject"
+                    && reference.resource === this.skosResource
+                )
+                || (
+                    reference.iconDefinition.target==="object"
+                    && reference.external
+                )
+            )
+        ).map(reference => reference.iconDefinition?.icon);
         return icons.length > 0 && icons[0] || undefined;
     }
     getParent(){

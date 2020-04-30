@@ -224,17 +224,13 @@ export class SkosResource {
             });
 
             po.predicate.evaluateType(predicateText);
-            if (po.predicate.type === SkosPredicateType.Unclassified){
-                if (!po.object.literal){
-                    let o = prefixManager.resolve(po.document.uri, objectText);
-                    let or = o && skosResourceManager.resources[o];
-                    if (or){
-                        this.addReference(po,or,iconDefinition);          
-                    }
-                }    
-                return;      
-            }
             switch(po.predicate.type){
+                case SkosPredicateType.Unclassified: {
+                    if (po.object.type===SkosObjectType.Iri){
+                        this.addReference(po,skosResourceManager.getResource(po.object),iconDefinition);
+                    }
+                    break;
+                }
                 case SkosPredicateType.Broader:
                 case SkosPredicateType.Narrower:
                 case SkosPredicateType.InScheme:
