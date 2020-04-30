@@ -8,9 +8,6 @@ import { DocumentHandler, getText, turtleDocuments } from './documenthandler';
 import { LoadingHandler } from './loadinghandler';
 import { resetDiagnostics } from './semantichandler';
 
-
-let allSkosResources: { [id: string] : { [id: string] : ISkosResource; }} = {};
-const mergedSkosResources: { [id: string] : ISkosResource; } = {};
 let documentHandler = new DocumentHandler();
 let loadingHandler:LoadingHandler;
 
@@ -65,6 +62,31 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.commands.registerCommand('skos-ttl-editor.selectConcept', (node:SkosNode) => { 
 		selectTextSnippet(node);
 	});
+	vscode.commands.registerCommand('skos-ttl-editor.showReferences', (node:SkosNode) => { 
+		let resource = node.getResource();
+		let locations = resource.references.filter(reference => reference.external)
+			 .map(reference => reference.predicateObject.location());
+		if (locations.length === 0) {
+			vscode.commands.executeCommand('references-view.clear');
+			vscode.commands.executeCommand('references-view.show');
+		} else {
+			documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
+				vscode.commands.executeCommand('references-view.find');
+			});
+		}
+	});
+	vscode.commands.registerCommand('skos-ttl-editor.showImplementations', (node:SkosNode) => { 
+		let resource = node.getResource();
+		let locations = resource.idOccurences.map(io => io.location());
+		if (locations.length === 0) {
+			vscode.commands.executeCommand('references-view.clear');
+			vscode.commands.executeCommand('references-view.show');
+		} else {
+			documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
+				vscode.commands.executeCommand('references-view.findImplementations');
+			});
+		}
+	});
 	
 	let inputDelay:NodeJS.Timeout;
 	let changeEvents:vscode.TextDocumentChangeEvent[]=[];
@@ -110,12 +132,6 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerHoverProvider(
 			'turtle', new ConceptHoverProvider()));
 	context.subscriptions.push(
-		vscode.languages.registerDocumentSymbolProvider(
-			'turtle', new SkosDocumentSymbolProvider(mergedSkosResources)));
-	/*context.subscriptions.push(
-		vscode.languages.registerDefinitionProvider(
-			'turtle', new ConceptDefinitionProvider(mergedSkosSubjects)));*/
-	context.subscriptions.push(
 		vscode.languages.registerImplementationProvider(
 			'turtle', new ConceptImplementationProvider()));
 	context.subscriptions.push(
@@ -144,7 +160,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});	
 }
 
-class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
+/*class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 	private sss:{ [id: string] : ISkosResource; }={};
 	public constructor(sss:{ [id: string] : ISkosResource; }){
 		this.sss = sss;
@@ -166,7 +182,7 @@ class SkosDocumentSymbolProvider implements vscode.DocumentSymbolProvider {
 		});
 		return result; 
 	}	
-}
+}*/
 
 class ConceptReferenceProvider implements vscode.ReferenceProvider {
 	provideReferences(document: vscode.TextDocument, position: vscode.Position, context: vscode.ReferenceContext, token: vscode.CancellationToken): vscode.ProviderResult<vscode.Location[]> {

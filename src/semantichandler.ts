@@ -55,7 +55,6 @@ export function refreshDiagnosticsRanges(){
 }
 
 export async function checkSemantics(resources:SkosResource[],progressReport?:(percentage:number,message?:string)=>Promise<any>){
-    //TODO: werden teilweise mehrfach hinzugefügt 
     if (progressReport){progressReport(0,"Label Check");}
     labelCheck(resources);
     if (progressReport){progressReport(20,"Type Check");}
@@ -72,7 +71,7 @@ export async function checkSemantics(resources:SkosResource[],progressReport?:(p
 
 function labelCheck(resources:SkosResource[]){
     resources.forEach(resource => {
-        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified).length > 0;
+        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified && po.predicate.type !== SkosPredicateType.Type).length > 0;
         if (probablySkosResource){
             let labels:SkosObject[] = resource.predicateObjects.filter(po => po.predicate.type === SkosPredicateType.Label).map(po => po.object);
             let langs = labels.map(l => l.lang?.getText());
@@ -109,7 +108,7 @@ function labelCheck(resources:SkosResource[]){
 
 function typeCheck(resources:SkosResource[]){
     resources.forEach(resource => {
-        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified).length > 0;
+        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified && po.predicate.type !== SkosPredicateType.Type).length > 0;
         if (probablySkosResource){
             let uniqueSubjectTypes = resource.types
                 .filter(type => [SkosSubjectType.Concept,SkosSubjectType.Collection,SkosSubjectType.ConceptScheme].includes(type))

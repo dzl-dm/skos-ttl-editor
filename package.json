@@ -48,6 +48,14 @@
 				"title": "Append Subtree to Scheme"
 			},
 			{
+				"command": "skos-ttl-editor.showReferences",
+				"title": "Show References"
+			},
+			{
+				"command": "skos-ttl-editor.showImplementations",
+				"title": "Show Implementations"
+			},
+			{
 				"command": "skos-ttl-editor.complementFiles",
 				"title": "Load all files in workspace",
 				"icon": {
@@ -72,6 +80,14 @@
 				},
 				{
 					"command": "skos-ttl-editor.appendToScheme",
+					"when": "view == skosOutline"
+				},
+				{
+					"command": "skos-ttl-editor.showReferences",
+					"when": "view == skosOutline"
+				},
+				{
+					"command": "skos-ttl-editor.showImplementations",
 					"when": "view == skosOutline"
 				},
 				{

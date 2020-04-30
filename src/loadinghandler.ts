@@ -41,7 +41,7 @@ export class LoadingHandler {
 			loadingStep:LoadingStep.Parsing,
 			message:"Parsing",
 			progressDone:0,
-			maxProgress:55
+			maxProgress:68
 		},
 		{
 			loadingStep:LoadingStep.Evaluation,
@@ -53,13 +53,13 @@ export class LoadingHandler {
 			loadingStep:LoadingStep.TreeBuild,
 			message:"Building concept tree",
 			progressDone:0,
-			maxProgress:5
+			maxProgress:1
 		},
 		{
 			loadingStep:LoadingStep.SemanticChecks,
-			message:"Building concept tree",
+			message:"Semantic checks",
 			progressDone:0,
-			maxProgress:10
+			maxProgress:1
 		}
 	];
 	private resetProgress(){
