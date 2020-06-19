@@ -67,25 +67,24 @@ export function activate(context: vscode.ExtensionContext) {
 		let locations = resource.references.filter(reference => reference.external)
 			 .map(reference => reference.predicateObject.location());
 		if (locations.length === 0) {
-			vscode.commands.executeCommand('references-view.clear');
-			vscode.commands.executeCommand('references-view.show');
-		} else {
-			documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
-				vscode.commands.executeCommand('references-view.find');
-			});
+			//if no reference, select implementation
+			locations = resource.idOccurences.map(io => io.location());
 		}
+		documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
+			vscode.commands.executeCommand('references-view.find');
+		});
 	});
 	vscode.commands.registerCommand('skos-ttl-editor.showImplementations', (node:SkosNode) => { 
 		let resource = node.getResource();
 		let locations = resource.idOccurences.map(io => io.location());
 		if (locations.length === 0) {
-			vscode.commands.executeCommand('references-view.clear');
-			vscode.commands.executeCommand('references-view.show');
-		} else {
-			documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
-				vscode.commands.executeCommand('references-view.findImplementations');
-			});
+			//if no implementation, select reference
+			locations = resource.references.filter(reference => reference.external)
+			 .map(reference => reference.predicateObject.location());
 		}
+		documentHandler.selectSingleTextSnippet(locations[0]).then(()=>{
+			vscode.commands.executeCommand('references-view.findImplementations');
+		});
 	});
 	
 	let inputDelay:NodeJS.Timeout;
