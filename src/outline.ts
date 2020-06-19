@@ -109,20 +109,36 @@ export class SkosOutlineProvider {
       this.treeDataProvider.setTree(rootNodes);
     }
     selectTreeItem(node: SkosNode){
-      this.treeView.reveal(node,{select:true});
+      if (this.checkIfNodeInTree(node)){
+        this.treeView.reveal(node,{select:true});
+      }
     }
     selectTreeItems(nodes: SkosNode[]){
       nodes.forEach(node => this.selectTreeItem(node));
     }
+    private checkIfNodeInTree(node: SkosNode):boolean{
+      return this.checkNodes(this.topnodes, node);
+    }
+    private checkNodes(nodes:SkosNode[], nodeToCheck:SkosNode):boolean{
+      for (let node of nodes){
+        if (node === nodeToCheck){
+          return true;
+        }
+        if (this.checkNodes(node.getChildren(), nodeToCheck)){
+          return true;
+        }
+      }
+      return false;
+    }
 
-
+    private topnodes:SkosNode[]=[];
     async createTreeviewContent(){
-      let topnodes:SkosNode[]=[];
+      this.topnodes = [];
       let topResources = Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).filter(resource => resource.broaders().length === 0);
       for (let resource of topResources){
-        topnodes.push(this.createTreeNode({resource}));
+        this.topnodes.push(this.createTreeNode({resource}));
       }
-      this.setTree(topnodes);
+      this.setTree(this.topnodes);
     }
 
     createTreeNode(options:{
