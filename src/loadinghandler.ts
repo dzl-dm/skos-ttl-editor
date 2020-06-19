@@ -143,6 +143,29 @@ export class LoadingHandler {
 					if (!document){continue;}		
 					let p = parser.parseTextDocument({
 						document,
+						callbackIfPrefixChanged:()=>{
+							//In case of a prefix change the whole document needs to be parsed again.
+							let resourcesAffectedByPrefixChange = Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).filter(r => {
+								if (r.idOccurences.filter(io => io.document.uri.fsPath === document.uri.fsPath)){
+									return true;
+								}
+								if (r.occurences.filter(o => o.document.uri.fsPath === document.uri.fsPath)){
+									return true;
+								}
+								return false;
+							});
+							skosResourceManager.removeIntersectingOccurences([new Occurence(
+								document.uri,
+								{
+									start:0,
+									end:document.getText().length
+								}
+							)]);
+							skosResourceManager.resetResourceEvaluations(resourcesAffectedByPrefixChange);
+							skosResourceManager.removeResourcesWithoutOccurenceOrReference();
+							resetDiagnostics(resourcesAffectedByPrefixChange);
+							refreshDiagnosticsRanges();
+						},
 						ranges:locationsToParse?.map(l => l.range),
 						progressReport:async (percantage:number, message?:string)=>this.totalProgressReport(
 							progress,

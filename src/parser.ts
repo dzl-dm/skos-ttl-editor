@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { skosResourceManager, SkosResource, SkosPredicateObject, SkosPredicate, SkosObject, prefixManager, SkosObjectType } from './skosresourcehandler';
+import { skosResourceManager, SkosResource, SkosPredicateObject, SkosPredicate, SkosObject, prefixManager, SkosObjectType, Prefix } from './skosresourcehandler';
 import { Occurence } from './skosresourcehandler';
 import { isNumber } from 'util';
 
@@ -139,6 +139,7 @@ export function applyPrefixesOnText(text:string,document:vscode.TextDocument):st
 
 export async function parseTextDocument(options:{
     document:vscode.TextDocument|undefined, 
+    callbackIfPrefixChanged?:()=>void,
     ranges?:vscode.Range[],
     progressReport?:(percentage:number,message?:string)=>Promise<any>
 }): Promise<SkosResource[]> {
@@ -146,7 +147,14 @@ export async function parseTextDocument(options:{
         return [];
     }    
     
-    setPrefixes(options.document,removeComments(options.document.getText()).text);
+    let prefixChange = !setPrefixes(options.document,removeComments(options.document.getText()).text);
+    if (prefixChange) {
+        //if prefixes have changed then parse whole document
+        if (options.callbackIfPrefixChanged){
+            options.callbackIfPrefixChanged();
+        }
+        options.ranges = undefined;
+    }
 
     let parsedResources:SkosResource[]=[];
     let getRangeOptions = {
@@ -269,13 +277,16 @@ export function getNextRange(getRangeOptions:{
     }
 }
     
-export function setPrefixes(document:vscode.TextDocument,s:string){
+
+export function setPrefixes(document:vscode.TextDocument,s:string):boolean{
     let r_prefix = new RegExp(prefixID,"g");
     let match:RegExpExecArray|null;
     r_prefix.lastIndex=-1;
+    let newPrefixes:Prefix[]=[];
     while (match = r_prefix.exec(s)){
         if (match && match.groups && match.groups["short"] && match.groups["long"]){
-            prefixManager.addPrefix(document.uri,match.groups["short"],match.groups["long"]);
+            newPrefixes.push({uri:document.uri, short: match.groups["short"], long: match.groups["long"]});
         }
-    }
+    }    
+    return prefixManager.setPrefixes(document.uri, newPrefixes);
 }

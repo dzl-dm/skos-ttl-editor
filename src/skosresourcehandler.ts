@@ -551,6 +551,24 @@ class PrefixManager{
         this.prefixes.push(new Prefix(uri,short,long));
     }
 
+    //returns true if prefixes are the same as before, else false
+    setPrefixes(uri:vscode.Uri, newPrefixes:Prefix[]):boolean{
+        let currentPrefixes = this.prefixes.filter(p => p.uri.fsPath === uri.fsPath);
+        if (currentPrefixes.map(p => p.short).sort().join(",")===newPrefixes.map(p=>p.short).sort().join(",")
+            && currentPrefixes.map(p => p.long).sort().join(",")===newPrefixes.map(p=>p.long).sort().join(",")){
+                return true;
+            }
+        else {
+            for (let i = this.prefixes.length-1; i >= 0; i--){
+                if (this.prefixes[i].uri.fsPath === uri.fsPath){
+                    this.prefixes.splice(i,1);
+                }
+            }
+            newPrefixes.forEach(p => this.addPrefix(p.uri,p.short,p.long));
+            return false;
+        }
+    }
+
     getShortByLong(uri:vscode.Uri, long:string):string|undefined{
         let matches = this.prefixes.filter(p => p.uri === uri && p.long === long);
         return matches && matches[0] && matches[0].short;
@@ -565,7 +583,7 @@ class PrefixManager{
 
 export const prefixManager = new PrefixManager();
 
-class Prefix{
+export class Prefix{
     uri: vscode.Uri;
     short: string;
     long: string;
