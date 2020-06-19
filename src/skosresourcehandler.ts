@@ -158,18 +158,19 @@ export class SkosResource {
         return this.narrowerReferences().map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
     }
     narrowerReferences():SkosReference[]{
-        return this.references.filter(r => !r.external && r.predicateObject.predicate.type === SkosPredicateType.Narrower 
-            || !r.external && r.predicateObject.predicate.type === SkosPredicateType.Member
-            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader);
+        return this.references.filter(r => 
+            !r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Narrower 
+            || !r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Member
+            || r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Broader);
     }
     broaders():SkosResource[]{
         return this.broaderReferences().map(reference => reference.resource).filter((value,index,array)=>array.indexOf(value)===index);
     }
     broaderReferences():SkosReference[]{
         return this.references.filter(r => 
-            !r.external && r.predicateObject.predicate.type === SkosPredicateType.Broader 
-            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Narrower
-            || r.external && r.predicateObject.predicate.type === SkosPredicateType.Member
+            !r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Broader 
+            || r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Narrower
+            || r.external && r.predicateObject.predicate && r.predicateObject.predicate.type === SkosPredicateType.Member
         );
     }
     parents():SkosResource[]{
