@@ -127,10 +127,11 @@ export class LoadingHandler {
 					affectedResources = skosResourceManager.removeIntersectingOccurences(ceOccurences);
 					skosResourceManager.resetResourceEvaluations(affectedResources);
 					skosResourceManager.removeResourcesWithoutOccurenceOrReference();
-					skosResourceManager.adjustLocations(changeEvents);
 					resetDiagnostics(affectedResources);
 					refreshDiagnosticsRanges();
+					//The order of the following two lines is crucial.
 					locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
+					skosResourceManager.adjustLocations(changeEvents);
 				}
 
 				//parse
