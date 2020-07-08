@@ -21,6 +21,7 @@ class SkosResourceManager {
         let counter=0;
         for (let resource of resources){
             resource.evaluatePredicateObjects();
+            resource.addDescriptions();
             counter++;
             if (progressReport && (counter%100===0 || counter === resources.length)){
                 await progressReport(counter/resources.length*100);
@@ -408,7 +409,6 @@ export class Occurence {
         let removeCommentsResult = removeComments(textWithComments);
         let result:GetSubOccurencesOfMatchAndGroupsResult[]=[];
 
-        regexp.lastIndex=-1;
         let match:RegExpExecArray|null;
         while (match = regexp.exec(removeCommentsResult.text)){
             let offset_start = this.documentOffset.start + this.adjustOffsetWithCommentOffsets(match.index,removeCommentsResult.comment_offsets);

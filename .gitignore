@@ -7,3 +7,4 @@ src/test/stw.ttl
 src/test/stw_shortened.ttl
 vsc-extension-quickstart.md
 skos-ttl-editor-*.vsix
+marketplace token.txt
