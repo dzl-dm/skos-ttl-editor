@@ -75,14 +75,20 @@ class SkosResourceManager {
                                 && occurence.documentOffset.end > minOffset){
                                     minOffset = occurence.documentOffset.end;
                                 }
-                            if (occurence.documentOffset.start >= contentChange.rangeOffset+contentChange.text.length
+                            if (occurence.documentOffset.start >= contentChange.rangeOffset-contentChange.rangeLength+contentChange.text.length
                                 && occurence.documentOffset.start < maxOffset){
                                     maxOffset = occurence.documentOffset.start;
                                 }
                         }
                     });
                 });
-                result.push(new vscode.Location(changeEvent.document.uri,new vscode.Range(changeEvent.document.positionAt(minOffset),changeEvent.document.positionAt(maxOffset))));
+                result.push(
+                    new vscode.Location(
+                        changeEvent.document.uri,
+                        new vscode.Range(
+                            changeEvent.document.positionAt(minOffset),
+                            changeEvent.document.positionAt(maxOffset-contentChange.rangeLength+contentChange.text.length)
+                )));
             }
         }
         return sortLocations(result);

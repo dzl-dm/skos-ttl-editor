@@ -129,7 +129,7 @@ export class LoadingHandler {
 					skosResourceManager.removeResourcesWithoutOccurenceOrReference();
 					resetDiagnostics(affectedResources);
 					refreshDiagnosticsRanges();
-					//The order of the following two lines is crucial.
+					//The order of the following two lines is crucial. The locationsToParse get adjusted in getNewLocationsToParseByChangeEvents
 					locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
 					skosResourceManager.adjustLocations(changeEvents);
 				}
