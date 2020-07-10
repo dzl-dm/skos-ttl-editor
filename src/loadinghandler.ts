@@ -146,10 +146,10 @@ export class LoadingHandler {
 						callbackIfPrefixChanged:()=>{
 							//In case of a prefix change the whole document needs to be parsed again.
 							let resourcesAffectedByPrefixChange = Object.keys(skosResourceManager.resources).map(key => skosResourceManager.resources[key]).filter(r => {
-								if (r.idOccurences.filter(io => io.document.uri.fsPath === document.uri.fsPath)){
+								if (r.idOccurences.filter(io => io.document.uri.fsPath === document.uri.fsPath).length > 0){
 									return true;
 								}
-								if (r.occurences.filter(o => o.document.uri.fsPath === document.uri.fsPath)){
+								if (r.occurences.filter(o => o.document.uri.fsPath === document.uri.fsPath).length > 0){
 									return true;
 								}
 								return false;
@@ -181,10 +181,15 @@ export class LoadingHandler {
 				//after parse
 				await Promise.all(parsingDocuments).then(async (parsedResources)=>{
 					let resources = parsedResources.reduce((prev,curr)=>prev = prev.concat(curr),[]);
+					resetDiagnostics(resources);
+					skosResourceManager.resetResourceEvaluations(resources);
 					await skosResourceManager.evaluatePredicateObjects(
 						resources,
 						async (percantage:number, message?:string)=>this.totalProgressReport(progress,LoadingStep.Evaluation,percantage,message)
 					);
+					let resourcesHierarchicalHull = resources.map(resource => resource.narrowers().concat(resource.broaders())).reduce((prev,curr)=>prev=prev.concat(curr),[]);
+					skosResourceManager.addDescriptions(resources);
+					skosResourceManager.addDescriptions(resourcesHierarchicalHull);
 					this.totalProgressReport(progress,LoadingStep.TreeBuild,0);
 					this.skosOutlineProvider.createTreeviewContent();
 					this.totalProgressReport(progress,LoadingStep.TreeBuild,100);

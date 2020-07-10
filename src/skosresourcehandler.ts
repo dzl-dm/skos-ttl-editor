@@ -21,12 +21,17 @@ class SkosResourceManager {
         let counter=0;
         for (let resource of resources){
             resource.evaluatePredicateObjects();
-            resource.addDescriptions();
             counter++;
             if (progressReport && (counter%100===0 || counter === resources.length)){
                 await progressReport(counter/resources.length*100);
             }
         }
+    }
+
+    addDescriptions(resources:SkosResource[]){
+        for (let resource of resources){
+            resource.addDescriptions();
+        }        
     }
 
     removeIntersectingOccurences(occurences:Occurence[]):SkosResource[]{
