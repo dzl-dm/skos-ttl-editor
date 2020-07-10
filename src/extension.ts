@@ -289,11 +289,13 @@ class CompletionItemProvider implements vscode.CompletionItemProvider {
 }
 
 function selectTextSnippet(node:SkosNode){
-	if (node.getLocations().length>1){
-		showQuickPicksForConceptTextSelection(node.getLocations());
-	} else if (node.getLocations().length === 1) {
+	if (node.getLocations().length > 0) {
 		let pickedLocation = node.getLocations()[0];
-		documentHandler.selectSingleTextSnippet(pickedLocation);
+		documentHandler.selectSingleTextSnippet(pickedLocation).then(()=>{
+			if (node.getLocations().length>1){
+				showQuickPicksForConceptTextSelection(node.getLocations());
+			} 
+		});
 	}
 }
 
