@@ -190,12 +190,21 @@ suite('Loadinghandler Test Suite: Initial load + changes', () => {
         assert.equal(skosResourceManager.resources["<http://data.dzl.de/ont/dwh#TestResource211>"].references.filter(reference => reference.external && reference.predicateObject.predicate.type === SkosPredicateType.Narrower).length,0);
     });
 
-    test('first content change',async ()=>{
+    test('first content change and get locations to parse by contentchange',async ()=>{
         await editor.edit((editBuilder)=>{
             if (changeEvents){
                 editBuilder.delete(changeEvents[0].contentChanges[0].range);
             }
         }); 
+
+        locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
+
+        assert.equal(locationsToParse && locationsToParse.length,1);
+        assert.equal(locationsToParse && locationsToParse[0].range.start.line,11);
+        assert.equal(locationsToParse && locationsToParse[0].range.start.character,1);
+        assert.equal(locationsToParse && locationsToParse[0].range.end.line,17);
+        assert.equal(locationsToParse && locationsToParse[0].range.end.character,0);
+
         await afterLoadingProcedureFinished();
     });
 
@@ -213,38 +222,6 @@ suite('Loadinghandler Test Suite: Initial load + changes', () => {
         assert.equal(skosResourceManager.resources["<http://data.dzl.de/ont/dwh#TestResource2111>"].occurences[0].location().range.start.character,0);
         assert.equal(skosResourceManager.resources["<http://data.dzl.de/ont/dwh#TestResource2111>"].occurences[0].location().range.end.line,26);
         assert.equal(skosResourceManager.resources["<http://data.dzl.de/ont/dwh#TestResource2111>"].occurences[0].location().range.end.character,1);
-    });
-
-    test('get locations to parse by contentchange', async ()=>{            
-        let x = skosResourceManager;
-        locationsToParse = connectLocations(skosResourceManager.getNewLocationsToParseByChangeEvents(changeEvents));
-
-        assert.equal(locationsToParse && locationsToParse.length,1);
-        assert.equal(locationsToParse && locationsToParse[0].range.start.line,11);
-        assert.equal(locationsToParse && locationsToParse[0].range.start.character,1);
-        assert.equal(locationsToParse && locationsToParse[0].range.end.line,17);
-        assert.equal(locationsToParse && locationsToParse[0].range.end.character,0);
-        assert.equal(JSON.stringify(Object.keys(skosResourceManager.resources).sort()),JSON.stringify([
-            "<http://data.dzl.de/ont/dwh#TestResource11>",
-            "<http://data.dzl.de/ont/dwh#TestResource1>",
-            "<http://data.dzl.de/ont/dwh#TestResource2111>",
-            "<http://data.dzl.de/ont/dwh#TestResource211>",
-            "<http://data.dzl.de/ont/dwh#TestResource21>",
-            "<http://data.dzl.de/ont/dwh#TestResource2>",
-            "<http://data.dzl.de/ont/dwh#TestResource3111>",
-            "<http://data.dzl.de/ont/dwh#TestResource311>",
-            "<http://data.dzl.de/ont/dwh#TestResource31>",
-            "<http://data.dzl.de/ont/dwh#TestResource3>",
-            "<http://data.dzl.de/ont/dwh#TestResource41>",
-            "<http://data.dzl.de/ont/dwh#TestResource4>",
-            "<http://data.dzl.de/ont/dwh#TestResource51>",
-            "<http://data.dzl.de/ont/dwh#TestResource52>",
-            "<http://data.dzl.de/ont/dwh#TestResource53>",
-            "<http://data.dzl.de/ont/dwh#TestResource54>",
-            "<http://data.dzl.de/ont/dwh#TestCollection1>",
-            "<http://data.dzl.de/ont/dwh#TestScheme1>",
-            "unknownPrefix:TestResource55"
-        ].sort()));
     });
 
     test('revert first change', async ()=>{ 
