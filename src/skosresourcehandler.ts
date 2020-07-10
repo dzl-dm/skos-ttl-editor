@@ -28,7 +28,10 @@ class SkosResourceManager {
         }
     }
 
-    addDescriptions(resources:SkosResource[]){
+    addDescriptions(resources?:SkosResource[]){
+        if (!resources){
+            resources = Object.keys(this.resources).map(key => this.resources[key]);
+        }
         for (let resource of resources){
             resource.addDescriptions();
         }        

@@ -187,9 +187,7 @@ export class LoadingHandler {
 						resources,
 						async (percantage:number, message?:string)=>this.totalProgressReport(progress,LoadingStep.Evaluation,percantage,message)
 					);
-					let resourcesHierarchicalHull = resources.map(resource => resource.narrowers().concat(resource.broaders())).reduce((prev,curr)=>prev=prev.concat(curr),[]);
-					skosResourceManager.addDescriptions(resources);
-					skosResourceManager.addDescriptions(resourcesHierarchicalHull);
+					skosResourceManager.addDescriptions();
 					this.totalProgressReport(progress,LoadingStep.TreeBuild,0);
 					this.skosOutlineProvider.createTreeviewContent();
 					this.totalProgressReport(progress,LoadingStep.TreeBuild,100);
