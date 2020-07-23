@@ -114,7 +114,8 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	vscode.window.onDidChangeActiveTextEditor((editor) => {
-		if (editor){
+		//viewColumn is undefined in case this isn't one of the main editors, e.g. an embedded editor (like git diff)
+		if (editor && editor.viewColumn){
 			loadingHandler.loadingProcedure([editor.document]);
 		}
 	});

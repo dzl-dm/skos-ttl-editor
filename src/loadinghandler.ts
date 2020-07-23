@@ -41,7 +41,7 @@ export class LoadingHandler {
 			loadingStep:LoadingStep.Parsing,
 			message:"Parsing",
 			progressDone:0,
-			maxProgress:68
+			maxProgress:60
 		},
 		{
 			loadingStep:LoadingStep.Evaluation,
@@ -59,7 +59,7 @@ export class LoadingHandler {
 			loadingStep:LoadingStep.SemanticChecks,
 			message:"Semantic checks",
 			progressDone:0,
-			maxProgress:1
+			maxProgress:9
 		}
 	];
 	private resetProgress(){
@@ -78,6 +78,7 @@ export class LoadingHandler {
 		await wait(0);
 	}
 
+	private progressLocation = vscode.workspace.getConfiguration().get("skos-ttl-editor.progressLocation") === true ? vscode.ProgressLocation.Notification : vscode.ProgressLocation.Window;
 	async loadingProcedure(documents:(vscode.TextDocument|undefined)[]|Thenable<(vscode.TextDocument|undefined)>[], changeEvents?: vscode.TextDocumentChangeEvent[]){
 		let cancelled=false;
 		this.resetProgress();
@@ -100,7 +101,7 @@ export class LoadingHandler {
 				return;
 			}
 			return vscode.window.withProgress({
-				location: vscode.ProgressLocation.Notification,
+				location: this.progressLocation,
 				title: "Loading "+documents.length+" document(s)",
 				cancellable: true
 			}, async (progress, token) => {

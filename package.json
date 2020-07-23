@@ -3,7 +3,7 @@
 	"publisher": "markstoehr",
 	"displayName": "SKOS Turtle Editor",
 	"description": "",
-	"version": "0.0.11",
+	"version": "0.0.12",
 	"engines": {
 		"vscode": "^1.40.0"
 	},
@@ -111,10 +111,15 @@
 		"configuration": {
 			"title": "SKOS Turtle Editor",
 			"properties": {
+				"skos-ttl-editor.progressLocation": {
+					"type": "boolean",
+					"default": true,
+					"description": "If selected, loading progress will be shown in the notification area."
+				},
 				"skos-ttl-editor.parsingAndVerificationDelayAfterUserInput": {
 					"type": "number",
 					"default": 500,
-					"description": "The delay after a user input before the changed document(s) will be parsed and verified."
+					"description": "The delay after a user input before the changed document(s) will be parsed, displayed and verified."
 				},
 				"skos-ttl-editor.customAutoCompletePrefixedPredicates": {
 					"type": "object",
