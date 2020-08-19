@@ -148,7 +148,7 @@ export function sortLocations(locations: vscode.Location[]):vscode.Location[]{
 export function connectLocations(locations:vscode.Location[]):vscode.Location[]{
     locations = sortLocations(locations);
     for (let i = locations.length-1; i > 0; i--){
-        if (locations[i].uri === locations[i-1].uri
+        if (locations[i].uri.fsPath === locations[i-1].uri.fsPath
             && locations[i].range.intersection(locations[i-1].range)){
                 locations[i-1].range=locations[i].range.union(locations[i-1].range);
                 locations.splice(i,1);

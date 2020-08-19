@@ -78,7 +78,7 @@ class SkosResourceManager {
                 let maxOffset = turtleDocuments.get(changeEvent.document.uri).text?.length||0;
                 Object.keys(this.resources).map(key => this.resources[key]).forEach(resource => {
                     resource.occurences.forEach(occurence => {
-                        if (occurence.document.uri === changeEvent.document.uri){
+                        if (occurence.document.uri.fsPath === changeEvent.document.uri.fsPath){
                             if (occurence.documentOffset.end <= contentChange.rangeOffset
                                 && occurence.documentOffset.end > minOffset){
                                     minOffset = occurence.documentOffset.end;
@@ -117,7 +117,7 @@ class SkosResourceManager {
             .map(key => this.resources[key])
             .filter(resource => {
                 for(let occurence of resource.occurences){
-                    if (occurence.document.uri === uri && occurence.location().range.intersection(range)){
+                    if (occurence.document.uri.fsPath === uri.fsPath && occurence.location().range.intersection(range)){
                         return true;
                     }
                 }
@@ -538,7 +538,7 @@ class PrefixManager{
     prefixes:Prefix[]=[];
     
     apply(uri:vscode.Uri,s:string):string|undefined{        
-        let matchingPrefix = this.prefixes.filter(p => p.uri === uri && s.startsWith(p.long.substring(0,p.long.length-1)));
+        let matchingPrefix = this.prefixes.filter(p => p.uri.fsPath === uri.fsPath && s.startsWith(p.long.substring(0,p.long.length-1)));
         if (matchingPrefix.length>0){
             let prefix = matchingPrefix[0];
             let result = s.replace(prefix.long.substring(0,prefix.long.length-1),prefix.short);
@@ -548,7 +548,7 @@ class PrefixManager{
 
     resolve(uri:vscode.Uri,s:string):string|undefined{        
         if (s === "a"){return iridefs.type;}
-        let matchingPrefix = this.prefixes.filter(p => p.uri===uri && s.startsWith(p.short));
+        let matchingPrefix = this.prefixes.filter(p => p.uri.fsPath===uri.fsPath && s.startsWith(p.short));
         if (matchingPrefix.length>0) {
             let prefix = matchingPrefix[0];
             let end = s.substr(prefix.short.length);
@@ -557,7 +557,7 @@ class PrefixManager{
     }
 
     getSkosPrefix(uri:vscode.Uri):string|undefined{
-        let prefix = this.prefixes.filter(p => p.uri === uri && p.long === iridefs.skosBase);
+        let prefix = this.prefixes.filter(p => p.uri.fsPath === uri.fsPath && p.long === iridefs.skosBase);
         return prefix[0]?.short;
     }
 
@@ -584,7 +584,7 @@ class PrefixManager{
     }
 
     getShortByLong(uri:vscode.Uri, long:string):string|undefined{
-        let matches = this.prefixes.filter(p => p.uri === uri && p.long === long);
+        let matches = this.prefixes.filter(p => p.uri.fsPath === uri.fsPath && p.long === long);
         return matches && matches[0] && matches[0].short;
     }
 
