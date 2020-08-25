@@ -504,6 +504,8 @@ export class SkosPredicateObject extends Occurence {
 
 export class SkosPredicate extends Occurence{
     type:SkosPredicateType=SkosPredicateType.Unclassified;
+    private customHierarchicalReferencePredicatesNarrower:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesNarrower") || [];
+    private customHierarchicalReferencePredicatesBroader:string[] = vscode.workspace.getConfiguration().get("skos-ttl-editor.customHierarchicalReferencePredicatesBroader") || [];
     evaluateType(predicateText?:string):void {
         let text = predicateText || this.getPrefixResolvedText() || "";
         switch(text){
@@ -517,6 +519,8 @@ export class SkosPredicate extends Occurence{
             case iridefs.hasTopConcept: this.type = SkosPredicateType.HasTopConcept; break;
             case iridefs.type: this.type = SkosPredicateType.Type; break;
         }
+        if (this.customHierarchicalReferencePredicatesBroader.includes(text)) { this.type = SkosPredicateType.Broader; }
+        if (this.customHierarchicalReferencePredicatesNarrower.includes(text)) { this.type = SkosPredicateType.Narrower; }
     }
 }
 
