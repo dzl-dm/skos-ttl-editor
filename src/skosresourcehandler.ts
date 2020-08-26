@@ -83,7 +83,7 @@ class SkosResourceManager {
                                 && occurence.documentOffset.end > minOffset){
                                     minOffset = occurence.documentOffset.end;
                                 }
-                            if (occurence.documentOffset.start >= contentChange.rangeOffset-contentChange.rangeLength+contentChange.text.length
+                            if (occurence.documentOffset.start >= contentChange.rangeOffset+contentChange.rangeLength
                                 && occurence.documentOffset.start < maxOffset){
                                     maxOffset = occurence.documentOffset.start;
                                 }

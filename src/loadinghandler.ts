@@ -183,6 +183,7 @@ export class LoadingHandler {
 				await Promise.all(parsingDocuments).then(async (parsedResources)=>{
 					let resources = parsedResources.reduce((prev,curr)=>prev = prev.concat(curr),[]);
 					resetDiagnostics(resources);
+					refreshDiagnosticsRanges();
 					skosResourceManager.resetResourceEvaluations(resources);
 					await skosResourceManager.evaluatePredicateObjects(
 						resources,
