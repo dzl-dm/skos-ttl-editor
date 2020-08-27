@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { Occurence, SkosResource, SkosPredicateType, SkosObject, SkosSubjectType, SkosPredicateObject, SkosObjectType } from './skosresourcehandler';
+import { Occurence, SkosResource, SkosPredicateType, SkosObject, SkosSubjectType, SkosPredicateObject, SkosObjectType, prefixManager } from './skosresourcehandler';
 import { iridefs, IRIREF } from './parser';
+import { DocumentHandler } from './documenthandler';
 
 let diagnosticCollection = vscode.languages.createDiagnosticCollection("Semantic Diagnostics");
 
@@ -71,7 +72,13 @@ export async function checkSemantics(resources:SkosResource[],progressReport?:(p
 
 function labelCheck(resources:SkosResource[]){
     resources.forEach(resource => {
-        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified && po.predicate.type !== SkosPredicateType.Type).length > 0;
+        console.log(resource.label());
+        console.log();
+        let probablySkosResource = resource.predicateObjects.filter(po => {
+            let t1 = po.predicate.getPrefixResolvedText();
+            let t2 = iridefs.skosBase;
+            return t1.substr(0,t1.length-1).startsWith(t2.substr(0,t2.length-1));
+        }).length > 0;
         if (probablySkosResource){
             let labels:SkosObject[] = resource.predicateObjects.filter(po => po.predicate.type === SkosPredicateType.Label).map(po => po.object);
             let langs = labels.map(l => l.lang?.getText());
@@ -108,7 +115,11 @@ function labelCheck(resources:SkosResource[]){
 
 function typeCheck(resources:SkosResource[]){
     resources.forEach(resource => {
-        let probablySkosResource = resource.predicateObjects.filter(po => po.predicate.type !== SkosPredicateType.Unclassified && po.predicate.type !== SkosPredicateType.Type).length > 0;
+        let probablySkosResource = resource.predicateObjects.filter(po => {
+            let t1 = po.predicate.getPrefixResolvedText();
+            let t2 = iridefs.skosBase;
+            return t1.substr(0,t1.length-1).startsWith(t2.substr(0,t2.length-1));
+        }).length > 0;
         if (probablySkosResource){
             let uniqueSubjectTypes = resource.types
                 .filter(type => [SkosSubjectType.Concept,SkosSubjectType.Collection,SkosSubjectType.ConceptScheme].includes(type))
